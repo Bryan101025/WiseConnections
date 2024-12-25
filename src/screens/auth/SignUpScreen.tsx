@@ -25,36 +25,38 @@ const SignUpScreen = ({ navigation }: Props) => {
   const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
-    if (loading) return;
+  if (loading) return;
+  
+  if (password !== confirmPassword) {
+    Alert.alert('Error', 'Passwords do not match');
+    return;
+  }
+  if (password.length < 6) {
+    Alert.alert('Error', 'Password must be at least 6 characters long');
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) throw error;
     
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-      
-      // If signup successful, navigate to profile setup
+    if (data.session) {
       navigation.navigate('ProfileSetup');
-      
-    } catch (error) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setLoading(false);
+    } else {
+      Alert.alert('Success', 'Please check your email for verification');
     }
-  };
+    
+  } catch (error) {
+    Alert.alert('Error', error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <KeyboardAvoidingView 

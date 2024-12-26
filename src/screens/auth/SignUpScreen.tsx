@@ -50,6 +50,7 @@ const SignUpScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
+      // Sign up the user
       const { data: { user }, error } = await supabase.auth.signUp({
         email,
         password,
@@ -58,13 +59,15 @@ const SignUpScreen = ({ navigation }) => {
       if (error) throw error;
 
       if (user) {
+        // Create initial profile record with new schema
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([
             {
-              user_id: user.id,
+              id: user.id,
               email: user.email,
               created_at: new Date(),
+              profile_completed: false
             }
           ]);
 
@@ -73,7 +76,7 @@ const SignUpScreen = ({ navigation }) => {
       }
 
       Alert.alert(
-        'Verification Required',
+        'Success',
         'Please check your email to verify your account',
         [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
       );

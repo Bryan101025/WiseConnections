@@ -217,4 +217,159 @@ const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           <TouchableOpacity 
             style={styles.creatorRow}
             onPress={() => navigation.navigate('UserProfile', { userId: creator.id })}
+          >
+            <Text style={styles.creatorName}>
+              {creator.first_name} {creator.last_name}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Participants ({participants.length})</Text>
+          {participants.map((participant) => (
+            <TouchableOpacity
+              key={participant.id}
+              style={styles.participantRow}
+              onPress={() => navigation.navigate('UserProfile', { userId: participant.id })}
+            >
+              <Text style={styles.participantName}>
+                {participant.first_name} {participant.last_name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {userParticipation ? (
+          <TouchableOpacity
+            style={[styles.button, styles.leaveButton]}
+            onPress={handleLeaveEvent}
+            disabled={joiningStatus}
+          >
+            {joiningStatus ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Leave Event</Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.button, styles.joinButton]}
+            onPress={handleJoinEvent}
+            disabled={joiningStatus || event.current_participants >= event.max_participants}
+          >
+            {joiningStatus ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>
+                {event.current_participants >= event.max_participants
+                  ? 'Event Full'
+                  : 'Join Event'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={[styles.button, styles.chatButton]}
+          onPress={() => navigation.navigate('EventChat', { eventId })}
+        >
+          <Text style={styles.buttonText}>Event Chat</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </ScreenTemplate>
+  );
+};
+
+const styles = StyleSheet.create({
+  header: {
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  activityTag: {
+    backgroundColor: '#E8F0FE',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+  },
+  activityText: {
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  infoSection: {
+    backgroundColor: '#f8f8f8',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 24,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  infoText: {
+    marginLeft: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  description: {
+    fontSize: 16,
+    color: '#444',
+    lineHeight: 24,
+  },
+  creatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+  },
+  creatorName: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  participantRow: {
+    padding: 12,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  participantName: {
+    fontSize: 16,
+  },
+  button: {
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  joinButton: {
+    backgroundColor: '#007AFF',
+  },
+  leaveButton: {
+    backgroundColor: '#FF3B30',
+  },
+  chatButton: {
+    backgroundColor: '#34C759',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
+
+export default EventDetailsScreen;
           

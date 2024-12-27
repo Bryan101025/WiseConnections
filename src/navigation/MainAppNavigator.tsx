@@ -3,14 +3,11 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/Ionicons';
 
-// Import the stack navigators
-import {
-  HomeStack,
-  DiscoverStack,
-  ConnectionsStack,
-  ProfileStack,
-  NotificationsStack
-} from './StackNavigators';
+import HomeScreen from '../screens/main/HomeScreen';
+import DiscoverScreen from '../screens/main/DiscoverScreen';
+import EventsScreen from '../screens/main/EventsScreen';
+import ConnectionsScreen from '../screens/main/ConnectionsScreen';
+import NotificationsScreen from '../screens/main/NotificationsScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -28,11 +25,11 @@ const MainAppNavigator = () => {
             case 'Discover':
               iconName = focused ? 'search' : 'search-outline';
               break;
+            case 'Events':
+              iconName = focused ? 'calendar' : 'calendar-outline';
+              break;
             case 'Connections':
               iconName = focused ? 'people' : 'people-outline';
-              break;
-            case 'Profile':
-              iconName = focused ? 'person' : 'person-outline';
               break;
             case 'Notifications':
               iconName = focused ? 'notifications' : 'notifications-outline';
@@ -45,31 +42,11 @@ const MainAppNavigator = () => {
         tabBarInactiveTintColor: 'gray',
       })}
     >
-      <Tab.Screen 
-        name="Home" 
-        component={HomeStack}
-        options={{ headerShown: false }}
-      />
-      <Tab.Screen 
-        name="Discover" 
-        component={DiscoverStack}
-        options={{ headerShown: false }}
-      />
-      <Tab.Screen 
-        name="Connections" 
-        component={ConnectionsStack}
-        options={{ headerShown: false }}
-      />
-      <Tab.Screen 
-        name="Profile" 
-        component={ProfileStack}
-        options={{ headerShown: false }}
-      />
-      <Tab.Screen 
-        name="Notifications" 
-        component={NotificationsStack}
-        options={{ headerShown: false }}
-      />
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Discover" component={DiscoverScreen} />
+      <Tab.Screen name="Events" component={EventsScreen} />
+      <Tab.Screen name="Connections" component={ConnectionsScreen} />
+      <Tab.Screen name="Notifications" component={NotificationsScreen} />
     </Tab.Navigator>
   );
 };

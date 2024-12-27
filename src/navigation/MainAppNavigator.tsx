@@ -3,11 +3,14 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/Ionicons';
 
-import HomeScreen from '../screens/main/HomeScreen';
-import DiscoverScreen from '../screens/main/DiscoverScreen';
-import ConnectionsScreen from '../screens/main/ConnectionsScreen';
-import ProfileScreen from '../screens/main/ProfileScreen';
-import NotificationsScreen from '../screens/main/NotificationsScreen';
+// Import the stack navigators
+import {
+  HomeStack,
+  DiscoverStack,
+  ConnectionsStack,
+  ProfileStack,
+  NotificationsStack
+} from './StackNavigators';
 
 const Tab = createBottomTabNavigator();
 
@@ -42,11 +45,31 @@ const MainAppNavigator = () => {
         tabBarInactiveTintColor: 'gray',
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Discover" component={DiscoverScreen} />
-      <Tab.Screen name="Connections" component={ConnectionsScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-      <Tab.Screen name="Notifications" component={NotificationsScreen} />
+      <Tab.Screen 
+        name="Home" 
+        component={HomeStack}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen 
+        name="Discover" 
+        component={DiscoverStack}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen 
+        name="Connections" 
+        component={ConnectionsStack}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileStack}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen 
+        name="Notifications" 
+        component={NotificationsStack}
+        options={{ headerShown: false }}
+      />
     </Tab.Navigator>
   );
 };

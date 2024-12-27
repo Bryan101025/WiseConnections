@@ -1,3 +1,4 @@
+// src/screens/auth/SignUpScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -5,154 +6,161 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  SafeAreaView,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   ActivityIndicator,
 } from 'react-native';
 import { supabase } from '../../config/supabase';
+import { NavigationProp } from '@react-navigation/native';
 
-const SignUpScreen = ({ navigation }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+type SignUpFormData = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+};
+
+interface Props {
+  navigation: NavigationProp<any>;
+}
+
+const SignUpScreen: React.FC<Props> = ({ navigation }) => {
+  const [formData, setFormData] = useState<SignUpFormData>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+  });
   const [loading, setLoading] = useState(false);
 
-  const validateEmail = (email) => {
-    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return regex.test(email);
-  };
-
   const handleSignUp = async () => {
-    if (loading) return;
-
-    // Validation
-    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
-      return;
-    }
-
+    if (!validateForm()) return;
     setLoading(true);
+
     try {
-      // Sign up the user
-      const { data: { user }, error } = await supabase.auth.signUp({
-        email,
-        password,
+      // 1. Create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
       });
 
-      if (error) throw error;
+      if (authError) throw authError;
 
-      if (user) {
-        // Create initial profile record with new schema
+      if (authData.user) {
+        // 2. Create profile record
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([
             {
-              id: user.id,
-              email: user.email,
-              created_at: new Date(),
-              profile_completed: false
-            }
+              id: authData.user.id,
+              first_name: formData.firstName,
+              last_name: formData.lastName,
+              email: formData.email,
+              profile_completed: false,
+            },
           ]);
 
         if (profileError) throw profileError;
-        navigation.navigate('ProfileSetup', { userId: user.id });
-      }
 
-      Alert.alert(
-        'Success',
-        'Please check your email to verify your account',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
-      );
+        // 3. Navigate to profile setup
+        navigation.navigate('ProfileSetup', { userId: authData.user.id });
+      }
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert(
+        'Sign Up Error',
+        error instanceof Error ? error.message : 'An error occurred during sign up'
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const validateForm = (): boolean => {
+    if (!formData.firstName.trim()) {
+      Alert.alert('Error', 'First name is required');
+      return false;
+    }
+    if (!formData.lastName.trim()) {
+      Alert.alert('Error', 'Last name is required');
+      return false;
+    }
+    if (!formData.email.trim()) {
+      Alert.alert('Error', 'Email is required');
+      return false;
+    }
+    if (!formData.password || formData.password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return false;
+    }
+    return true;
+  };
+
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
-          <Text style={styles.title}>Create Your Account</Text>
-          <Text style={styles.subtitle}>Join the Myrtle Beach retirement community</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.title}>Create Account</Text>
+        <Text style={styles.subtitle}>Join the Wise Connections community</Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            editable={!loading}
-          />
+        <TextInput
+          style={styles.input}
+          placeholder="First Name"
+          value={formData.firstName}
+          onChangeText={(text) => setFormData({ ...formData, firstName: text })}
+          autoCapitalize="words"
+          editable={!loading}
+        />
 
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            editable={!loading}
-          />
+        <TextInput
+          style={styles.input}
+          placeholder="Last Name"
+          value={formData.lastName}
+          onChangeText={(text) => setFormData({ ...formData, lastName: text })}
+          autoCapitalize="words"
+          editable={!loading}
+        />
 
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm Password"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-            editable={!loading}
-          />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={formData.email}
+          onChangeText={(text) => setFormData({ ...formData, email: text })}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          editable={!loading}
+        />
 
-          <Text style={styles.helpText}>
-            Password must be at least 6 characters long
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          value={formData.password}
+          onChangeText={(text) => setFormData({ ...formData, password: text })}
+          secureTextEntry
+          editable={!loading}
+        />
+
+        <TouchableOpacity 
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleSignUp}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Sign Up</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.loginLink}
+          onPress={() => navigation.navigate('Login')}
+          disabled={loading}
+        >
+          <Text style={styles.loginText}>
+            Already have an account? Log in
           </Text>
-
-          <TouchableOpacity 
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleSignUp}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={styles.buttonText}>Create Account</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.linkButton}
-            onPress={() => navigation.navigate('Login')}
-            disabled={loading}
-          >
-            <Text style={styles.linkText}>
-              Already have an account? Sign In
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 };
 
@@ -161,65 +169,53 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  scrollContent: {
-    flexGrow: 1,
-  },
   content: {
     flex: 1,
     padding: 20,
     justifyContent: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
+    marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 30,
+    marginBottom: 32,
     textAlign: 'center',
   },
   input: {
-    width: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 15,
-    fontSize: 16,
     borderWidth: 1,
     borderColor: '#ddd',
-  },
-  helpText: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 20,
-    textAlign: 'center',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 16,
+    fontSize: 16,
   },
   button: {
-    backgroundColor: '#4B9CD3',
-    padding: 15,
+    backgroundColor: '#007AFF',
+    padding: 16,
     borderRadius: 8,
     alignItems: 'center',
+    marginTop: 16,
   },
   buttonDisabled: {
-    backgroundColor: '#a0a0a0',
+    opacity: 0.7,
   },
   buttonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
-  linkButton: {
-    marginTop: 20,
-    padding: 10,
+  loginLink: {
+    marginTop: 16,
+    alignItems: 'center',
   },
-  linkText: {
-    color: '#4B9CD3',
+  loginText: {
+    color: '#007AFF',
     fontSize: 16,
-    textAlign: 'center',
   },
 });
 

@@ -4,30 +4,47 @@ import { supabase } from '../config/supabase';
 
 type FeedType = 'posts' | 'events';
 
-type FeedItem = {
+interface BaseFeedItem {
   id: string;
-  type: FeedType;
-  content?: string;
-  title?: string;
   created_at: string;
-  user?: {
+  type: FeedType;
+}
+
+interface PostFeedItem extends BaseFeedItem {
+  type: 'posts';
+  content: string;
+  likes_count: number;
+  comments_count: number;
+  is_liked?: boolean;
+  user: {
     id: string;
     first_name: string;
     last_name: string;
     profile_photo_url?: string;
   };
-  likes_count?: number;
-  comments_count?: number;
-};
+}
+
+interface EventFeedItem extends BaseFeedItem {
+  type: 'events';
+  title: string;
+  description: string;
+  date_time: string;
+  location: string;
+  current_participants: number;
+  max_participants: number;
+}
+
+type FeedItem = PostFeedItem | EventFeedItem;
 
 export const useActivityFeed = (activeFilter: FeedType) => {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const ITEMS_PER_PAGE = 10;
 
-  const fetchFeed = async (isRefreshing = false) => {
+  const fetchFeed = async (pageNum: number, isRefreshing = false) => {
     try {
       if (isRefreshing) {
         setRefreshing(true);
@@ -35,50 +52,62 @@ export const useActivityFeed = (activeFilter: FeedType) => {
         setLoading(true);
       }
 
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error('Not authenticated');
+
+      const start = (pageNum - 1) * ITEMS_PER_PAGE;
+      const end = start + ITEMS_PER_PAGE - 1;
+
       if (activeFilter === 'posts') {
-        const { data: posts, error } = await supabase
+        const { data: posts, error: postsError } = await supabase
           .from('posts')
           .select(`
-            id,
-            content,
-            created_at,
-            likes_count,
-            comments_count,
+            *,
             user:profiles!user_id (
               id,
               first_name,
               last_name,
               profile_photo_url
+            ),
+            likes:post_likes!left (
+              id,
+              user_id
             )
           `)
           .order('created_at', { ascending: false })
-          .range((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE - 1);
+          .range(start, end);
 
-        if (error) throw error;
+        if (postsError) throw postsError;
 
-        const formattedPosts = posts.map(post => ({
+        const transformedPosts: PostFeedItem[] = posts.map(post => ({
           ...post,
-          type: 'posts' as FeedType
+          type: 'posts',
+          is_liked: post.likes.some(like => like.user_id === userData.user?.id),
+          likes: undefined,
         }));
 
-        setFeed(prev => isRefreshing ? formattedPosts : [...prev, ...formattedPosts]);
+        setFeed(prev => pageNum === 1 ? transformedPosts : [...prev, ...transformedPosts]);
+        setHasMore(posts.length === ITEMS_PER_PAGE);
+
       } else {
-        const { data: events, error } = await supabase
+        const { data: events, error: eventsError } = await supabase
           .from('events')
           .select('*')
           .gte('date_time', new Date().toISOString())
           .order('date_time', { ascending: true })
-          .range((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE - 1);
+          .range(start, end);
 
-        if (error) throw error;
+        if (eventsError) throw eventsError;
 
-        const formattedEvents = events.map(event => ({
+        const transformedEvents: EventFeedItem[] = events.map(event => ({
           ...event,
-          type: 'events' as FeedType
+          type: 'events',
         }));
 
-        setFeed(prev => isRefreshing ? formattedEvents : [...prev, ...formattedEvents]);
+        setFeed(prev => pageNum === 1 ? transformedEvents : [...prev, ...transformedEvents]);
+        setHasMore(events.length === ITEMS_PER_PAGE);
       }
+
     } catch (error) {
       console.error('Error fetching feed:', error);
     } finally {
@@ -87,30 +116,4 @@ export const useActivityFeed = (activeFilter: FeedType) => {
     }
   };
 
-  const handleRefresh = async () => {
-    setPage(1);
-    await fetchFeed(true);
-  };
-
-  const loadMore = () => {
-    setPage(prev => prev + 1);
-  };
-
   useEffect(() => {
-    setPage(1);
-    setFeed([]);
-    fetchFeed();
-  }, [activeFilter]);
-
-  useEffect(() => {
-    fetchFeed();
-  }, [page]);
-
-  return {
-    feed,
-    loading,
-    refreshing,
-    handleRefresh,
-    loadMore,
-  };
-};

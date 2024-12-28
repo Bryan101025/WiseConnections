@@ -1,14 +1,16 @@
 // src/components/PostCard.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { formatDistanceToNow } from 'date-fns';
+import { useNavigation } from '@react-navigation/native';
 
 interface PostCardProps {
   post: {
@@ -17,6 +19,7 @@ interface PostCardProps {
     created_at: string;
     likes_count: number;
     comments_count: number;
+    is_liked?: boolean;
     user: {
       id: string;
       first_name: string;
@@ -24,14 +27,41 @@ interface PostCardProps {
       profile_photo_url?: string;
     };
   };
-  onLike?: () => void;
-  onComment?: () => void;
+  onLike?: (postId: string) => Promise<void>;
+  onComment?: (postId: string) => void;
 }
 
 export const PostCard = ({ post, onLike, onComment }: PostCardProps) => {
+  const navigation = useNavigation();
+  const [isLiking, setIsLiking] = useState(false);
+  const [localLikeCount, setLocalLikeCount] = useState(post.likes_count);
+  const [isLiked, setIsLiked] = useState(post.is_liked);
+
+  const handleLike = async () => {
+    if (!onLike || isLiking) return;
+    
+    setIsLiking(true);
+    try {
+      await onLike(post.id);
+      setIsLiked(!isLiked);
+      setLocalLikeCount(prev => isLiked ? prev - 1 : prev + 1);
+    } catch (error) {
+      console.error('Error liking post:', error);
+    } finally {
+      setIsLiking(false);
+    }
+  };
+
+  const navigateToProfile = () => {
+    navigation.navigate('Profile', { userId: post.user.id });
+  };
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <TouchableOpacity 
+        style={styles.header} 
+        onPress={navigateToProfile}
+      >
         <Image
           style={styles.avatar}
           source={
@@ -48,26 +78,38 @@ export const PostCard = ({ post, onLike, onComment }: PostCardProps) => {
             {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
           </Text>
         </View>
-      </View>
+      </TouchableOpacity>
 
       <Text style={styles.content}>{post.content}</Text>
 
       <View style={styles.footer}>
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={onLike}
+          onPress={handleLike}
+          disabled={isLiking}
         >
-          <Icon 
-            name="thumbs-up-outline" 
-            size={20} 
-            color="#666" 
-          />
-          <Text style={styles.actionText}>{post.likes_count}</Text>
+          {isLiking ? (
+            <ActivityIndicator size="small" color="#007AFF" />
+          ) : (
+            <>
+              <Icon 
+                name={isLiked ? "heart" : "heart-outline"}
+                size={20} 
+                color={isLiked ? "#FF3B30" : "#666"}
+              />
+              <Text style={[
+                styles.actionText,
+                isLiked && styles.actionTextLiked
+              ]}>
+                {localLikeCount}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={onComment}
+          onPress={() => onComment?.(post.id)}
         >
           <Icon 
             name="chatbubble-outline" 
@@ -107,6 +149,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     marginRight: 12,
+    backgroundColor: '#F2F2F7',
   },
   headerText: {
     flex: 1,
@@ -137,11 +180,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: 24,
+    minWidth: 45, // Prevent layout shift during loading
   },
   actionText: {
     fontSize: 14,
     color: '#666',
     marginLeft: 6,
+  },
+  actionTextLiked: {
+    color: '#FF3B30',
   },
 });
 

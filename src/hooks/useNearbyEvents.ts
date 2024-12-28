@@ -1,10 +1,23 @@
 // src/hooks/useNearbyEvents.ts
 import { useState, useEffect } from 'react';
+import { Platform, PermissionsAndroid } from 'react-native';
+import Geolocation from 'react-native-geolocation-service';
 import { supabase } from '../config/supabase';
-import * as Location from 'expo-location';
+
+export interface NearbyEvent {
+  id: string;
+  title: string;
+  description: string;
+  date_time: string;
+  location: string;
+  latitude: number;
+  longitude: number;
+  distance: number;
+  max_participants: number;
+  current_participants: number;
+}
 
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  // Haversine formula
   const R = 3958.8; // Earth's radius in miles
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -16,8 +29,37 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 };
 
+const requestLocationPermission = async () => {
+  if (Platform.OS === 'ios') {
+    try {
+      const granted = await Geolocation.requestAuthorization('whenInUse');
+      return granted === 'granted';
+    } catch (err) {
+      return false;
+    }
+  }
+
+  if (Platform.OS === 'android') {
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        {
+          title: 'Location Permission',
+          message: 'WiseConnections needs access to your location to show nearby events.',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        },
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    } catch (err) {
+      return false;
+    }
+  }
+};
+
 export const useNearbyEvents = () => {
-  const [nearbyEvents, setNearbyEvents] = useState([]);
+  const [nearbyEvents, setNearbyEvents] = useState<NearbyEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,35 +68,32 @@ export const useNearbyEvents = () => {
       setLoading(true);
       setError(null);
 
-      // Get user's location
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
+      const hasPermission = await requestLocationPermission();
+      if (!hasPermission) {
         throw new Error('Location permission not granted');
       }
 
-      const location = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = location.coords;
+      // Get current location
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        Geolocation.getCurrentPosition(
+          resolve,
+          reject,
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+        );
+      });
 
-      // Fetch events
+      const { latitude, longitude } = position.coords;
+
+      // Fetch events from Supabase
       const { data: events, error: dbError } = await supabase
         .from('events')
-        .select(`
-          id,
-          title,
-          description,
-          date_time,
-          location,
-          latitude,
-          longitude,
-          max_participants,
-          current_participants
-        `)
+        .select('*')
         .gte('date_time', new Date().toISOString())
         .order('date_time', { ascending: true });
 
       if (dbError) throw dbError;
 
-      // Calculate distance for each event and sort by proximity
+      // Calculate distances and sort
       const eventsWithDistance = events
         .map(event => ({
           ...event,
@@ -66,7 +105,7 @@ export const useNearbyEvents = () => {
           )
         }))
         .sort((a, b) => a.distance - b.distance)
-        .slice(0, 5); // Only show 5 nearest events
+        .slice(0, 5);
 
       setNearbyEvents(eventsWithDistance);
     } catch (err) {
@@ -77,26 +116,15 @@ export const useNearbyEvents = () => {
     }
   };
 
-  const refresh = () => {
-    fetchNearbyEvents();
-  };
-
   useEffect(() => {
     fetchNearbyEvents();
 
-    // Set up real-time subscription for event updates
     const subscription = supabase
       .channel('events_changes')
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'events'
-        },
-        () => {
-          fetchNearbyEvents();
-        }
+        { event: '*', schema: 'public', table: 'events' },
+        fetchNearbyEvents
       )
       .subscribe();
 
@@ -109,6 +137,6 @@ export const useNearbyEvents = () => {
     nearbyEvents,
     loading,
     error,
-    refresh,
+    refresh: fetchNearbyEvents,
   };
 };

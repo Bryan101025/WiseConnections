@@ -1,74 +1,103 @@
 // src/screens/main/HomeScreen.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  SafeAreaView,
   StyleSheet,
-  TouchableOpacity,
-  Image,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useActivityFeed } from '../../hooks/useActivityFeed';
+import { NearbyEventsSection } from '../../components/NearbyEventsSection';
+import { ActivityFeedFilter } from '../../components/ActivityFeedFilter';
+import { PostCard } from '../../components/PostCard';
+import { EventCard } from '../../components/EventCard';
 
-type Post = {
-  id: string;
-  user: {
-    name: string;
-    avatar?: string;
-  };
-  content: string;
-  timestamp: string;
-  likes: number;
-  comments: number;
-};
+type FeedType = 'posts' | 'events';
 
 const HomeScreen = () => {
-  const [posts, setPosts] = React.useState<Post[]>([
-    {
-      id: '1',
-      user: { name: 'Jane Smith' },
-      content: 'Just joined a new book club at the Beach Library! Anyone else interested in joining?',
-      timestamp: '2h ago',
-      likes: 5,
-      comments: 2,
-    },
-    // Add more sample posts
-  ]);
-
-  const renderPost = ({ item }: { item: Post }) => (
-    <View style={styles.postCard}>
-      <View style={styles.postHeader}>
-        <View style={styles.avatar} />
-        <View>
-          <Text style={styles.userName}>{item.user.name}</Text>
-          <Text style={styles.timestamp}>{item.timestamp}</Text>
-        </View>
-      </View>
-      <Text style={styles.content}>{item.content}</Text>
-      <View style={styles.actions}>
-        <TouchableOpacity style={styles.actionButton}>
-          <Text>{item.likes} Likes</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
-          <Text>{item.comments} Comments</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+  const insets = useSafeAreaInsets();
+  const [activeFilter, setActiveFilter] = useState<FeedType>('posts');
+  const { 
+    feed, 
+    loading, 
+    refreshing, 
+    handleRefresh, 
+    loadMore 
+  } = useActivityFeed(activeFilter);
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={posts}
-        renderItem={renderPost}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-      />
-    </View>
+    <SafeAreaView style={styles.container}>
+      <View style={[styles.content, { paddingTop: insets.top }]}>
+        <Text style={styles.title}>Wise Connections</Text>
+        <Text style={styles.subtitle}>Connecting 55+ in Myrtle Beach</Text>
+
+        <NearbyEventsSection />
+
+        <ActivityFeedFilter
+          activeFilter={activeFilter}
+          onFilterChange={setActiveFilter}
+        />
+
+        <ScrollView
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
+          onScroll={({ nativeEvent }) => {
+            const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+            const isEndReached = layoutMeasurement.height + contentOffset.y >= contentSize.height - 20;
+            if (isEndReached && !loading) {
+              loadMore();
+            }
+          }}
+          scrollEventThrottle={16}
+        >
+          {feed.map(item => (
+            item.type === 'post' ? (
+              <PostCard key={item.id} post={item} />
+            ) : (
+              <EventCard key={item.id} event={item} />
+            )
+          ))}
+          {loading && (
+            <ActivityIndicator style={styles.loader} color="#007AFF" />
+          )}
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  // ... styles similar to your UI
+  container: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+  },
+  content: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  loader: {
+    padding: 20,
+  },
 });
 
 export default HomeScreen;

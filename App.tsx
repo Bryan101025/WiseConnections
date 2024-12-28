@@ -9,6 +9,7 @@ import { CacheManager } from './src/utils/cacheManager';
 import { NotificationManager } from './src/utils/notificationManager';
 import { RealtimeProvider } from './src/contexts/RealtimeContext';
 import { useRealtimeSubscriptions } from './src/hooks/useRealtimeSubscriptions';
+import { OfflineSyncManager } from './src/utils/OfflineSyncManager';
 
 const Stack = createNativeStackNavigator();
 
@@ -61,6 +62,9 @@ export default function App() {
           await NotificationManager.registerForNotifications(session.user.id);
         }
 
+        // Initialize offline sync
+        await OfflineSyncManager.initialize();
+
         setIsInitialized(true);
       } catch (error) {
         console.error('Error initializing app:', error);
@@ -80,9 +84,10 @@ export default function App() {
       }
     });
 
-    // Set up periodic cache cleanup
+    // Set up periodic cache cleanup and sync check
     const cleanupInterval = setInterval(async () => {
       await CacheManager.cleanupExpiredCache();
+      await OfflineSyncManager.syncQueuedActions(); // Add this line
     }, 1000 * 60 * 60); // Run every hour
 
     // Cleanup subscriptions and intervals
@@ -91,7 +96,7 @@ export default function App() {
       clearInterval(cleanupInterval);
     };
   }, []);
-
+  
   // Optional: Show loading screen while initializing
   if (!isInitialized) {
     return (

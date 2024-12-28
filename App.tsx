@@ -106,9 +106,11 @@ export default function App() {
     );
   }
 
-  return (
+ return (
+  <NetworkProvider>
     <RealtimeProvider>
       <AppContent session={session} />
     </RealtimeProvider>
-  );
+  </NetworkProvider>
+);
 }

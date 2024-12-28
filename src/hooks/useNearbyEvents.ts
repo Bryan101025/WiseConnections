@@ -15,6 +15,17 @@ export interface NearbyEvent {
   distance: number;
   max_participants: number;
   current_participants: number;
+  creator?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    profile_photo_url?: string;
+  };
+}
+
+interface UseNearbyEventsProps {
+  limit?: number;
+  maxDistance?: number;
 }
 
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -56,16 +67,18 @@ const requestLocationPermission = async () => {
       return false;
     }
   }
+  return false;
 };
 
-export const useNearbyEvents = () => {
+export const useNearbyEvents = ({ limit = 5, maxDistance = 50 }: UseNearbyEventsProps = {}) => {
   const [nearbyEvents, setNearbyEvents] = useState<NearbyEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchNearbyEvents = async () => {
+  const fetchNearbyEvents = async (isRefreshing: boolean = false) => {
     try {
-      setLoading(true);
+      isRefreshing ? setRefreshing(true) : setLoading(true);
       setError(null);
 
       const hasPermission = await requestLocationPermission();
@@ -84,16 +97,24 @@ export const useNearbyEvents = () => {
 
       const { latitude, longitude } = position.coords;
 
-      // Fetch events from Supabase
+      // Fetch events from Supabase with creator information
       const { data: events, error: dbError } = await supabase
         .from('events')
-        .select('*')
+        .select(`
+          *,
+          creator:profiles!creator_id (
+            id,
+            first_name,
+            last_name,
+            profile_photo_url
+          )
+        `)
         .gte('date_time', new Date().toISOString())
         .order('date_time', { ascending: true });
 
       if (dbError) throw dbError;
 
-      // Calculate distances and sort
+      // Calculate distances, filter by maxDistance, and sort
       const eventsWithDistance = events
         .map(event => ({
           ...event,
@@ -104,39 +125,55 @@ export const useNearbyEvents = () => {
             event.longitude
           )
         }))
+        .filter(event => event.distance <= maxDistance)
         .sort((a, b) => a.distance - b.distance)
-        .slice(0, 5);
+        .slice(0, limit);
 
       setNearbyEvents(eventsWithDistance);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      setError(errorMessage);
       console.error('Error fetching nearby events:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
+
+  const refresh = () => fetchNearbyEvents(true);
 
   useEffect(() => {
     fetchNearbyEvents();
 
+    // Set up real-time subscription
     const subscription = supabase
       .channel('events_changes')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'events' },
-        fetchNearbyEvents
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'events',
+        },
+        (payload) => {
+          // Only refresh if the event is within the time range
+          if (payload.new && new Date(payload.new.date_time) >= new Date()) {
+            fetchNearbyEvents();
+          }
+        }
       )
       .subscribe();
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [limit, maxDistance]);
 
   return {
     nearbyEvents,
     loading,
+    refreshing,
     error,
-    refresh: fetchNearbyEvents,
+    refresh,
   };
 };

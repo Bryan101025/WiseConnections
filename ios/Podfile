@@ -25,6 +25,9 @@ target 'WiseConnections' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
+  # Add this line for geolocation
+  pod 'react-native-geolocation-service'
+
   target 'WiseConnectionsTests' do
     inherit! :complete
     # Pods for testing

@@ -15,12 +15,18 @@ type Connection = {
     last_name: string;
     bio: string | null;
     interests: string[];
+    location: string | null;
+    profile_photo_url: string | null;
   };
+};
+
+type RecommendedUser = Connection['connected_user'] & {
+  matchScore: number;
 };
 
 export const useConnections = () => {
   const [myConnections, setMyConnections] = useState<Connection[]>([]);
-  const [recommended, setRecommended] = useState<Connection['connected_user'][]>([]);
+  const [recommended, setRecommended] = useState<RecommendedUser[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchMyConnections = async () => {
@@ -37,7 +43,9 @@ export const useConnections = () => {
             first_name,
             last_name,
             bio,
-            interests
+            interests,
+            location,
+            profile_photo_url
           )
         `)
         .eq('requester_id', userData.user.id)
@@ -50,36 +58,72 @@ export const useConnections = () => {
     }
   };
 
+  const calculateMatchScore = (profile: any, userProfile: any) => {
+    let score = 0;
+
+    // Calculate shared interests score (0-5 points)
+    const sharedInterests = profile.interests?.filter(
+      (interest: string) => userProfile.interests?.includes(interest)
+    ) || [];
+    score += Math.min(sharedInterests.length * 2, 5);
+
+    // Location match (3 points)
+    if (profile.location && userProfile.location && 
+        profile.location === userProfile.location) {
+      score += 3;
+    }
+
+    return score;
+  };
+
   const fetchRecommended = async () => {
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
-      // Get current user's profile with interests
+      // Get current user's profile with interests and location
       const { data: userProfile } = await supabase
         .from('profiles')
-        .select('interests')
+        .select('interests, location')
         .eq('id', userData.user.id)
         .single();
 
-      if (!userProfile?.interests?.length) return;
+      if (!userProfile) return;
 
-      // Get users with matching interests who aren't connected
+      // Get potential connections
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select(`
+          id,
+          first_name,
+          last_name,
+          bio,
+          interests,
+          location,
+          profile_photo_url
+        `)
         .neq('id', userData.user.id)
-        .contains('interests', userProfile.interests)
         .not('id', 'in', (
           supabase
             .from('connections')
             .select('receiver_id')
-            .eq('requester_id', userData.user.id)
+            .or(`requester_id.eq.${userData.user.id},receiver_id.eq.${userData.user.id}`)
         ))
-        .limit(10);
+        .order('created_at', { ascending: false })
+        .limit(20);
 
       if (error) throw error;
-      setRecommended(data || []);
+
+      // Sort recommendations by match score
+      const sortedRecommendations = data
+        .map(profile => ({
+          ...profile,
+          matchScore: calculateMatchScore(profile, userProfile)
+        }))
+        .sort((a, b) => b.matchScore - a.matchScore)
+        .filter(profile => profile.matchScore > 0); // Only show relevant matches
+
+      setRecommended(sortedRecommendations);
     } catch (error) {
       console.error('Error fetching recommendations:', error);
     }

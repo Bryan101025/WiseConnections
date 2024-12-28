@@ -22,6 +22,11 @@ type Connection = {
 
 type RecommendedUser = Connection['connected_user'] & {
   matchScore: number;
+  matchDetails: {
+    sharedEvents: number;
+    sharedInterests: number;
+    locationMatch: boolean;
+  };
 };
 
 export const useConnections = () => {
@@ -58,22 +63,39 @@ export const useConnections = () => {
     }
   };
 
-  const calculateMatchScore = (profile: any, userProfile: any) => {
+  const calculateMatchScore = async (profile: any, userProfile: any) => {
     let score = 0;
 
-    // Calculate shared interests score (0-5 points)
+    // Shared Events Score (0-10 points)
+    const { data: sharedEvents } = await supabase
+      .from('event_participants')
+      .select('event_id')
+      .eq('status', 'registered')
+      .in('participant_id', [profile.id, userProfile.id])
+      .group('event_id')
+      .having('count(*)', 'eq', 2);
+
+    const sharedEventCount = sharedEvents?.length || 0;
+    score += Math.min(sharedEventCount * 5, 10); // 5 points per shared event, max 10 points
+
+    // Interests Score (0-5 points)
     const sharedInterests = profile.interests?.filter(
       (interest: string) => userProfile.interests?.includes(interest)
     ) || [];
     score += Math.min(sharedInterests.length * 2, 5);
 
-    // Location match (3 points)
+    // Location Score (3 points)
     if (profile.location && userProfile.location && 
         profile.location === userProfile.location) {
       score += 3;
     }
 
-    return score;
+    return {
+      score,
+      sharedEventCount,
+      sharedInterestCount: sharedInterests.length,
+      locationMatch: profile.location === userProfile.location
+    };
   };
 
   const fetchRecommended = async () => {
@@ -81,7 +103,7 @@ export const useConnections = () => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
-      // Get current user's profile with interests and location
+      // Get current user's profile
       const { data: userProfile } = await supabase
         .from('profiles')
         .select('interests, location')
@@ -100,7 +122,11 @@ export const useConnections = () => {
           bio,
           interests,
           location,
-          profile_photo_url
+          profile_photo_url,
+          event_participants(
+            event_id,
+            status
+          )
         `)
         .neq('id', userData.user.id)
         .not('id', 'in', (
@@ -114,14 +140,26 @@ export const useConnections = () => {
 
       if (error) throw error;
 
-      // Sort recommendations by match score
-      const sortedRecommendations = data
-        .map(profile => ({
-          ...profile,
-          matchScore: calculateMatchScore(profile, userProfile)
-        }))
+      // Calculate match scores with additional info
+      const recommendationsWithScores = await Promise.all(
+        data.map(async (profile) => {
+          const matchInfo = await calculateMatchScore(profile, userProfile);
+          return {
+            ...profile,
+            matchScore: matchInfo.score,
+            matchDetails: {
+              sharedEvents: matchInfo.sharedEventCount,
+              sharedInterests: matchInfo.sharedInterestCount,
+              locationMatch: matchInfo.locationMatch
+            }
+          };
+        })
+      );
+
+      // Sort by match score and filter out low scores
+      const sortedRecommendations = recommendationsWithScores
         .sort((a, b) => b.matchScore - a.matchScore)
-        .filter(profile => profile.matchScore > 0); // Only show relevant matches
+        .filter(profile => profile.matchScore > 0);
 
       setRecommended(sortedRecommendations);
     } catch (error) {

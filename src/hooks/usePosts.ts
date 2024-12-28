@@ -1,5 +1,5 @@
 // src/hooks/usePosts.ts
-import { useState, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
 
 export interface Post {
@@ -18,9 +18,9 @@ export interface Post {
 }
 
 export const usePosts = () => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
   const fetchPosts = async (page = 1, limit = 10) => {
@@ -34,7 +34,7 @@ export const usePosts = () => {
       const start = (page - 1) * limit;
       const end = start + limit - 1;
 
-      // Fetch posts with likes status
+      // Fetch posts with user info and like status
       const { data, error } = await supabase
         .from('posts')
         .select(`
@@ -46,7 +46,8 @@ export const usePosts = () => {
             profile_photo_url
           ),
           likes:post_likes!left (
-            id
+            id,
+            user_id
           )
         `)
         .order('created_at', { ascending: false })
@@ -54,10 +55,10 @@ export const usePosts = () => {
 
       if (error) throw error;
 
-      // Transform the data to include is_liked
+      // Transform data to include is_liked status
       const transformedPosts = data.map(post => ({
         ...post,
-        is_liked: post.likes.some((like: any) => like.user_id === userData.user?.id),
+        is_liked: post.likes.some(like => like.user_id === userData.user?.id),
         likes: undefined, // Remove the likes array from the final object
       }));
 
@@ -98,7 +99,13 @@ export const usePosts = () => {
       if (error) throw error;
 
       // Add the new post to the state
-      setPosts(prev => [{ ...data, likes_count: 0, comments_count: 0 }, ...prev]);
+      setPosts(prev => [{
+        ...data,
+        likes_count: 0,
+        comments_count: 0,
+        is_liked: false,
+      }, ...prev]);
+
       return { data, error: null };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create post';
@@ -127,16 +134,108 @@ export const usePosts = () => {
     }
   };
 
+  useEffect(() => {
+    fetchPosts();
+
+    // Set up real-time subscriptions
+    const postSubscription = supabase
+      .channel('posts-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'posts',
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            // Fetch the complete post data with user info
+            supabase
+              .from('posts')
+              .select(`
+                *,
+                user:profiles!user_id (
+                  id,
+                  first_name,
+                  last_name,
+                  profile_photo_url
+                )
+              `)
+              .eq('id', payload.new.id)
+              .single()
+              .then(({ data }) => {
+                if (data) {
+                  setPosts(prev => [{
+                    ...data,
+                    likes_count: 0,
+                    comments_count: 0,
+                    is_liked: false,
+                  }, ...prev]);
+                }
+              });
+          } else if (payload.eventType === 'UPDATE') {
+            setPosts(prev => 
+              prev.map(post => 
+                post.id === payload.new.id 
+                  ? { ...post, ...payload.new } 
+                  : post
+              )
+            );
+          } else if (payload.eventType === 'DELETE') {
+            setPosts(prev => 
+              prev.filter(post => post.id !== payload.old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    // Subscribe to likes and comments changes
+    const interactionsSubscription = supabase
+      .channel('interactions-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'post_likes',
+        },
+        () => {
+          // Refresh posts when likes change
+          fetchPosts();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comments',
+        },
+        () => {
+          // Refresh posts when comments change
+          fetchPosts();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      postSubscription.unsubscribe();
+      interactionsSubscription.unsubscribe();
+    };
+  }, []);
+
   const refresh = () => fetchPosts(1);
+  const loadMore = () => fetchPosts(Math.ceil(posts.length / 10) + 1);
 
   return {
     posts,
     loading,
     error,
     hasMore,
-    fetchPosts,
+    refresh,
+    loadMore,
     createPost,
     deletePost,
-    refresh,
   };
 };

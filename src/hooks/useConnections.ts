@@ -2,9 +2,25 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
 
+type ConnectionStatus = 'pending' | 'connected';
+
+type Connection = {
+  id: string;
+  requester_id: string;
+  receiver_id: string;
+  status: ConnectionStatus;
+  connected_user: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    bio: string | null;
+    interests: string[];
+  };
+};
+
 export const useConnections = () => {
-  const [myConnections, setMyConnections] = useState([]);
-  const [recommended, setRecommended] = useState([]);
+  const [myConnections, setMyConnections] = useState<Connection[]>([]);
+  const [recommended, setRecommended] = useState<Connection['connected_user'][]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchMyConnections = async () => {
@@ -39,25 +55,27 @@ export const useConnections = () => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
-      // Fetch user's interests first
+      // Get current user's profile with interests
       const { data: userProfile } = await supabase
         .from('profiles')
         .select('interests')
         .eq('id', userData.user.id)
         .single();
 
-      // Fetch users with similar interests who aren't connected
+      if (!userProfile?.interests?.length) return;
+
+      // Get users with matching interests who aren't connected
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .neq('id', userData.user.id)
+        .contains('interests', userProfile.interests)
         .not('id', 'in', (
           supabase
             .from('connections')
             .select('receiver_id')
             .eq('requester_id', userData.user.id)
         ))
-        .filter('interests', 'cs', `{${userProfile.interests.join(',')}}`)
         .limit(10);
 
       if (error) throw error;
@@ -83,9 +101,7 @@ export const useConnections = () => {
       if (error) throw error;
       
       // Refresh connections
-      await fetchMyConnections();
-      await fetchRecommended();
-      
+      await Promise.all([fetchMyConnections(), fetchRecommended()]);
       return { error: null };
     } catch (error) {
       return { error };
@@ -108,18 +124,21 @@ export const useConnections = () => {
       if (error) throw error;
       
       // Refresh connections
-      await fetchMyConnections();
-      await fetchRecommended();
-      
+      await Promise.all([fetchMyConnections(), fetchRecommended()]);
       return { error: null };
     } catch (error) {
       return { error };
     }
   };
 
+  const refresh = async () => {
+    setLoading(true);
+    await Promise.all([fetchMyConnections(), fetchRecommended()]);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    Promise.all([fetchMyConnections(), fetchRecommended()])
-      .finally(() => setLoading(false));
+    refresh();
   }, []);
 
   return {
@@ -128,6 +147,6 @@ export const useConnections = () => {
     loading,
     connect,
     disconnect,
-    refresh: () => Promise.all([fetchMyConnections(), fetchRecommended()]),
+    refresh,
   };
 };

@@ -1,11 +1,17 @@
 // src/hooks/useLikes.ts
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
+import { CacheManager } from '../utils/cacheManager';
 
 interface UseLikesProps {
   postId: string;
   initialLikeCount?: number;
   initialIsLiked?: boolean;
+}
+
+interface LikeState {
+  likeCount: number;
+  isLiked: boolean;
 }
 
 export const useLikes = ({ 
@@ -18,6 +24,35 @@ export const useLikes = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const getCacheKey = () => `post_like_${postId}`;
+
+  // Initialize from cache
+  useEffect(() => {
+    const initFromCache = async () => {
+      const cached = await CacheManager.get<LikeState>({
+        key: getCacheKey(),
+        expiryMinutes: 60, // Cache likes for 1 hour
+      });
+
+      if (cached) {
+        setLikeCount(cached.likeCount);
+        setIsLiked(cached.isLiked);
+      }
+    };
+
+    initFromCache();
+  }, [postId]);
+
+  const updateCache = async (newLikeCount: number, newIsLiked: boolean) => {
+    await CacheManager.set({
+      key: getCacheKey(),
+      expiryMinutes: 60,
+    }, {
+      likeCount: newLikeCount,
+      isLiked: newIsLiked,
+    });
+  };
+
   const toggleLike = async () => {
     try {
       setLoading(true);
@@ -28,8 +63,13 @@ export const useLikes = ({
 
       // Optimistic update
       const newIsLiked = !isLiked;
+      const newLikeCount = newIsLiked ? likeCount + 1 : likeCount - 1;
+      
       setIsLiked(newIsLiked);
-      setLikeCount(prev => newIsLiked ? prev + 1 : prev - 1);
+      setLikeCount(newLikeCount);
+
+      // Update cache optimistically
+      await updateCache(newLikeCount, newIsLiked);
 
       if (newIsLiked) {
         // Like the post
@@ -63,8 +103,14 @@ export const useLikes = ({
       return { error: null };
     } catch (err) {
       // Revert optimistic update on error
-      setIsLiked(!isLiked);
-      setLikeCount(prev => isLiked ? prev + 1 : prev - 1);
+      const revertedIsLiked = !isLiked;
+      const revertedLikeCount = revertedIsLiked ? likeCount + 1 : likeCount - 1;
+      
+      setIsLiked(revertedIsLiked);
+      setLikeCount(revertedLikeCount);
+      
+      // Revert cache
+      await updateCache(revertedLikeCount, revertedIsLiked);
       
       const errorMessage = err instanceof Error ? err.message : 'Failed to update like';
       setError(errorMessage);
@@ -74,7 +120,6 @@ export const useLikes = ({
     }
   };
 
-  // Check if user has liked the post
   const checkLikeStatus = async () => {
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -89,8 +134,9 @@ export const useLikes = ({
         })
         .single();
 
-      if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "no rows returned"
-      setIsLiked(!!data);
+      if (error && error.code !== 'PGRST116') throw error;
+      const newIsLiked = !!data;
+      setIsLiked(newIsLiked);
 
       // Get updated like count
       const { data: postData, error: postError } = await supabase
@@ -100,13 +146,16 @@ export const useLikes = ({
         .single();
 
       if (postError) throw postError;
-      setLikeCount(postData.likes_count);
+      const newLikeCount = postData.likes_count;
+      setLikeCount(newLikeCount);
+
+      // Update cache with verified data
+      await updateCache(newLikeCount, newIsLiked);
     } catch (err) {
       console.error('Error checking like status:', err);
     }
   };
 
-  // Subscribe to real-time updates for likes
   const subscribeToLikes = () => {
     const subscription = supabase
       .channel(`post_likes:${postId}`)
@@ -118,7 +167,9 @@ export const useLikes = ({
           table: 'post_likes',
           filter: `post_id=eq.${postId}`,
         },
-        () => {
+        async () => {
+          // Clear cache when real-time update received
+          await CacheManager.clear(getCacheKey());
           checkLikeStatus();
         }
       )
@@ -128,6 +179,13 @@ export const useLikes = ({
       subscription.unsubscribe();
     };
   };
+
+  // Cleanup cache on unmount
+  useEffect(() => {
+    return () => {
+      CacheManager.clear(getCacheKey());
+    };
+  }, [postId]);
 
   return {
     likeCount,
@@ -139,39 +197,3 @@ export const useLikes = ({
     subscribeToLikes,
   };
 };
-
-// Example usage in a component:
-/*
-const PostLikes = ({ postId, initialLikeCount, initialIsLiked }) => {
-  const {
-    likeCount,
-    isLiked,
-    loading,
-    toggleLike,
-    subscribeToLikes,
-  } = useLikes({
-    postId,
-    initialLikeCount,
-    initialIsLiked,
-  });
-
-  useEffect(() => {
-    const unsubscribe = subscribeToLikes();
-    return () => unsubscribe();
-  }, [postId]);
-
-  return (
-    <TouchableOpacity
-      onPress={toggleLike}
-      disabled={loading}
-    >
-      <Icon
-        name={isLiked ? "heart" : "heart-outline"}
-        size={20}
-        color={isLiked ? "#FF3B30" : "#666"}
-      />
-      <Text>{likeCount}</Text>
-    </TouchableOpacity>
-  );
-};
-*/

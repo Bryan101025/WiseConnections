@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+    	<string>WiseConnections needs your location to show you nearby events and connect you with people in your area.</string>
+   	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    	<string>WiseConnections needs your location to show you nearby events and connect you with people in your area.</string>
+    	<key>NSLocationAlwaysUsageDescription</key>
+    	<string>WiseConnections needs your location to show you nearby events and connect you with people in your area.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>

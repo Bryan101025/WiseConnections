@@ -12,6 +12,8 @@ import EventsScreen from '../screens/main/EventsScreen';
 import ConnectionsScreen from '../screens/main/ConnectionsScreen';
 import NotificationsScreen from '../screens/main/NotificationsScreen';
 import EventDetailsScreen from '../screens/main/EventDetailsScreen';
+import NotificationSettingsScreen from '../screens/main/NotificationSettingsScreen';
+import { TouchableOpacity } from 'react-native';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -104,8 +106,25 @@ const NotificationsStack = () => {
       <Stack.Screen 
         name="NotificationsScreen" 
         component={NotificationsScreen}
-        options={{
+        options={({ navigation }) => ({
           headerTitle: 'Notifications',
+          headerRight: () => (
+            <TouchableOpacity
+              style={{ marginRight: 16 }}
+              onPress={() => navigation.navigate('NotificationSettings')}
+            >
+              <Icon name="settings-outline" size={24} color="#000" />
+            </TouchableOpacity>
+          ),
+        })}
+      />
+      <Stack.Screen 
+        name="NotificationSettings" 
+        component={NotificationSettingsScreen}
+        options={{
+          headerTitle: 'Notification Settings',
+          headerShadowVisible: false,
+          headerBackTitle: 'Back',
         }}
       />
     </Stack.Navigator>

@@ -6,6 +6,8 @@ import { supabase } from './src/config/supabase';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import { View, Text } from 'react-native';
 import { CacheManager } from './src/utils/cacheManager';
+import { NotificationManager } from './src/utils/notificationManager';
+import messaging from '@react-native-firebase/messaging';
 
 const Stack = createNativeStackNavigator();
 
@@ -30,7 +32,12 @@ export default function App() {
 
         // Run cache cleanup
         await CacheManager.cleanupExpiredCache();
-        await CacheManager.cleanupOldCache(7); // Clean cache older than 7 days
+        await CacheManager.cleanupOldCache(7);
+
+        // Initialize notifications if user is logged in
+        if (session?.user) {
+          await NotificationManager.registerForNotifications(session.user.id);
+        }
 
         setIsInitialized(true);
       } catch (error) {
@@ -42,9 +49,39 @@ export default function App() {
     initializeApp();
 
     // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
+      
+      // Handle notification registration on auth state change
+      if (session?.user) {
+        await NotificationManager.registerForNotifications(session.user.id);
+      }
     });
+
+    // Set up notification handlers
+    const unsubscribeOnMessage = messaging().onMessage(async remoteMessage => {
+      // Handle foreground messages
+      console.log('Received foreground message:', remoteMessage);
+      // You can add custom notification display here
+    });
+
+    const unsubscribeOnNotificationOpenedApp = messaging()
+      .onNotificationOpenedApp(remoteMessage => {
+        // Handle notification opened app from background state
+        console.log('Notification opened app:', remoteMessage);
+        // Add navigation logic here based on notification type
+      });
+
+    // Check if app was opened from a notification
+    messaging()
+      .getInitialNotification()
+      .then(remoteMessage => {
+        if (remoteMessage) {
+          // Handle notification that opened app from quit state
+          console.log('Initial notification:', remoteMessage);
+          // Add navigation logic here based on notification type
+        }
+      });
 
     // Set up periodic cache cleanup
     const cleanupInterval = setInterval(async () => {
@@ -54,6 +91,8 @@ export default function App() {
     // Cleanup subscriptions and intervals
     return () => {
       subscription?.unsubscribe();
+      unsubscribeOnMessage();
+      unsubscribeOnNotificationOpenedApp();
       clearInterval(cleanupInterval);
     };
   }, []);

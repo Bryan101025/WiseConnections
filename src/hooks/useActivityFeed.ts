@@ -1,6 +1,7 @@
 // src/hooks/useActivityFeed.ts
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
+import { CacheManager } from '../utils/cacheManager';
 
 type FeedType = 'posts' | 'events';
 
@@ -44,12 +45,30 @@ export const useActivityFeed = (activeFilter: FeedType) => {
   const [hasMore, setHasMore] = useState(true);
   const ITEMS_PER_PAGE = 10;
 
+  const getCacheKey = (pageNum: number) => 
+    `feed_${activeFilter}_page${pageNum}_${new Date().toDateString()}`;
+
   const fetchFeed = async (pageNum: number, isRefreshing = false) => {
     try {
       if (isRefreshing) {
         setRefreshing(true);
       } else {
         setLoading(true);
+      }
+
+      // Try to get cached data if not refreshing
+      if (!isRefreshing) {
+        const cachedData = await CacheManager.get<FeedItem[]>({
+          key: getCacheKey(pageNum),
+          expiryMinutes: 5, // Cache expires after 5 minutes
+        });
+
+        if (cachedData) {
+          setFeed(prev => pageNum === 1 ? cachedData : [...prev, ...cachedData]);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
       }
 
       const { data: userData } = await supabase.auth.getUser();
@@ -86,6 +105,12 @@ export const useActivityFeed = (activeFilter: FeedType) => {
           likes: undefined,
         }));
 
+        // Cache the transformed posts
+        await CacheManager.set({
+          key: getCacheKey(pageNum),
+          expiryMinutes: 5,
+        }, transformedPosts);
+
         setFeed(prev => pageNum === 1 ? transformedPosts : [...prev, ...transformedPosts]);
         setHasMore(posts.length === ITEMS_PER_PAGE);
 
@@ -104,6 +129,12 @@ export const useActivityFeed = (activeFilter: FeedType) => {
           type: 'events',
         }));
 
+        // Cache the transformed events
+        await CacheManager.set({
+          key: getCacheKey(pageNum),
+          expiryMinutes: 5,
+        }, transformedEvents);
+
         setFeed(prev => pageNum === 1 ? transformedEvents : [...prev, ...transformedEvents]);
         setHasMore(events.length === ITEMS_PER_PAGE);
       }
@@ -117,3 +148,52 @@ export const useActivityFeed = (activeFilter: FeedType) => {
   };
 
   useEffect(() => {
+    setPage(1);
+    fetchFeed(1);
+
+    // Set up real-time subscription
+    const subscription = supabase
+      .channel(`${activeFilter}_feed`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: activeFilter,
+        },
+        async (payload) => {
+          // Clear cache when data changes
+          await CacheManager.clear(getCacheKey(1));
+          fetchFeed(1);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [activeFilter]);
+
+  const handleRefresh = async () => {
+    // Clear cache when manually refreshing
+    await CacheManager.clear(getCacheKey(1));
+    setPage(1);
+    await fetchFeed(1, true);
+  };
+
+  const loadMore = async () => {
+    if (!hasMore || loading || refreshing) return;
+    const nextPage = page + 1;
+    setPage(nextPage);
+    await fetchFeed(nextPage);
+  };
+
+  return {
+    feed,
+    loading,
+    refreshing,
+    hasMore,
+    handleRefresh,
+    loadMore,
+  };
+};

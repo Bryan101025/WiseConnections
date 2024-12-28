@@ -8,15 +8,10 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { format } from 'date-fns';
+import type { NearbyEvent } from '../hooks/useNearbyEvents';
 
 interface EventPreviewCardProps {
-  event: {
-    id: string;
-    title: string;
-    date_time: string;
-    location: string;
-    distance?: number;
-  };
+  event: NearbyEvent;
   onPress: () => void;
 }
 
@@ -28,29 +23,38 @@ export const EventPreviewCard = ({ event, onPress }: EventPreviewCardProps) => {
       </Text>
       
       <View style={styles.detailsContainer}>
-        <View style={styles.detail}>
+        <View style={styles.detailRow}>
           <Icon name="calendar-outline" size={14} color="#666" />
           <Text style={styles.detailText}>
             {format(new Date(event.date_time), 'MMM d, h:mm a')}
           </Text>
         </View>
 
-        <View style={styles.detail}>
+        <View style={styles.detailRow}>
           <Icon name="location-outline" size={14} color="#666" />
-          <Text style={styles.detailText}>
+          <Text style={styles.detailText} numberOfLines={1}>
             {event.location}
           </Text>
         </View>
 
-        {event.distance && (
-          <View style={styles.detail}>
-            <Icon name="navigate-outline" size={14} color="#666" />
-            <Text style={styles.detailText}>
-              {event.distance.toFixed(1)} miles
-            </Text>
-          </View>
-        )}
+        <View style={styles.detailRow}>
+          <Icon name="navigate-outline" size={14} color="#666" />
+          <Text style={styles.detailText}>
+            {event.distance.toFixed(1)} miles away
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Icon name="people-outline" size={14} color="#666" />
+          <Text style={styles.detailText}>
+            {event.current_participants}/{event.max_participants} attending
+          </Text>
+        </View>
       </View>
+
+      <TouchableOpacity style={styles.learnMoreButton} onPress={onPress}>
+        <Text style={styles.learnMoreText}>Learn More</Text>
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 };
@@ -59,9 +63,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 12,
+    padding: 16,
     marginRight: 12,
-    width: 250,
+    width: 280,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -72,20 +76,34 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   title: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 12,
+    color: '#000',
   },
   detailsContainer: {
-    gap: 4,
+    marginBottom: 16,
   },
-  detail: {
+  detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    marginBottom: 8,
   },
   detailText: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#666',
+    marginLeft: 8,
+    flex: 1,
+  },
+  learnMoreButton: {
+    backgroundColor: '#F2F2F7',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  learnMoreText: {
+    color: '#007AFF',
+    fontSize: 15,
+    fontWeight: '500',
   },
 });

@@ -11,6 +11,7 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigation } from '@react-navigation/native';
+import { usePostInteractions } from '../hooks/usePostInteractions';
 
 interface PostCardProps {
   post: {
@@ -27,40 +28,42 @@ interface PostCardProps {
       profile_photo_url?: string;
     };
   };
-  onLike?: (postId: string) => Promise<void>;
-  onComment?: (postId: string) => void;
 }
 
-export const PostCard = ({ post, onLike, onComment }: PostCardProps) => {
+export const PostCard = ({ post }: PostCardProps) => {
   const navigation = useNavigation();
-  const [isLiking, setIsLiking] = useState(false);
-  const [localLikeCount, setLocalLikeCount] = useState(post.likes_count);
+  const { loading, toggleLike } = usePostInteractions();
   const [isLiked, setIsLiked] = useState(post.is_liked);
+  const [localLikeCount, setLocalLikeCount] = useState(post.likes_count);
 
-  const handleLike = async () => {
-    if (!onLike || isLiking) return;
-    
-    setIsLiking(true);
-    try {
-      await onLike(post.id);
-      setIsLiked(!isLiked);
-      setLocalLikeCount(prev => isLiked ? prev - 1 : prev + 1);
-    } catch (error) {
-      console.error('Error liking post:', error);
-    } finally {
-      setIsLiking(false);
-    }
+  const handleProfilePress = () => {
+    navigation.navigate('Profile', { userId: post.user.id });
   };
 
-  const navigateToProfile = () => {
-    navigation.navigate('Profile', { userId: post.user.id });
+  const handleCommentsPress = () => {
+    navigation.navigate('Comments', { postId: post.id });
+  };
+
+  const handleLikePress = async () => {
+    if (loading[post.id]) return;
+    
+    // Optimistic update
+    setIsLiked(!isLiked);
+    setLocalLikeCount(prev => isLiked ? prev - 1 : prev + 1);
+
+    const { error } = await toggleLike(post.id);
+    if (error) {
+      // Revert on error
+      setIsLiked(isLiked);
+      setLocalLikeCount(post.likes_count);
+    }
   };
 
   return (
     <View style={styles.container}>
       <TouchableOpacity 
         style={styles.header} 
-        onPress={navigateToProfile}
+        onPress={handleProfilePress}
       >
         <Image
           style={styles.avatar}
@@ -85,10 +88,10 @@ export const PostCard = ({ post, onLike, onComment }: PostCardProps) => {
       <View style={styles.footer}>
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={handleLike}
-          disabled={isLiking}
+          onPress={handleLikePress}
+          disabled={loading[post.id]}
         >
-          {isLiking ? (
+          {loading[post.id] ? (
             <ActivityIndicator size="small" color="#007AFF" />
           ) : (
             <>
@@ -109,14 +112,16 @@ export const PostCard = ({ post, onLike, onComment }: PostCardProps) => {
 
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={() => onComment?.(post.id)}
+          onPress={handleCommentsPress}
         >
           <Icon 
             name="chatbubble-outline" 
             size={20} 
             color="#666" 
           />
-          <Text style={styles.actionText}>{post.comments_count}</Text>
+          <Text style={styles.actionText}>
+            {post.comments_count}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -180,7 +185,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: 24,
-    minWidth: 45, // Prevent layout shift during loading
+    minWidth: 45,
   },
   actionText: {
     fontSize: 14,

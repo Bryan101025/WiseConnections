@@ -101,7 +101,7 @@ const ConnectionCard = ({ user, isRecommended, onConnect, onMessage }) => (
           <Text style={styles.buttonText}>Connect</Text>
         </TouchableOpacity>
       ) : (
-        <>
+        <View style={styles.connectedActions}>
           <TouchableOpacity
             style={styles.messageButton}
             onPress={onMessage}
@@ -110,13 +110,12 @@ const ConnectionCard = ({ user, isRecommended, onConnect, onMessage }) => (
             <Text style={styles.buttonText}>Message</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.disconnectButton}
             onPress={onConnect}
+            style={styles.disconnectLink}
           >
-            <Icon name="person-remove-outline" size={18} color="#FFF" />
-            <Text style={styles.buttonText}>Disconnect</Text>
+            <Text style={styles.disconnectText}>Disconnect</Text>
           </TouchableOpacity>
-        </>
+        </View>
       )}
     </View>
   </View>
@@ -194,7 +193,6 @@ const ConnectionsScreen = ({ navigation }) => {
     </SafeAreaView>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -231,3 +229,139 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
   },
+  selectedSegmentText: {
+    color: '#000',
+    fontWeight: '600',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  cardsList: {
+    padding: 16,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  userInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  userName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 4,
+  },
+  locationText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  bioText: {
+    fontSize: 15,
+    color: '#666',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  interestTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  tag: {
+    backgroundColor: '#F2F2F7',
+    borderRadius: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    margin: 4,
+  },
+  tagText: {
+    fontSize: 13,
+    color: '#666',
+  },
+  moreInterests: {
+    fontSize: 13,
+    color: '#666',
+    marginLeft: 4,
+    alignSelf: 'center',
+  },
+  cardActions: {
+    marginTop: 8,
+  },
+  connectedActions: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  connectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    justifyContent: 'center',
+  },
+  messageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007AFF',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    justifyContent: 'center',
+    marginBottom: 12,
+    width: '100%',
+  },
+  disconnectLink: {
+    padding: 8,
+  },
+  disconnectText: {
+    color: '#666',
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+  buttonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  loader: {
+    marginTop: 32,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#000',
+  },
+  emptyStateText: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+});
+
+export default ConnectionsScreen;

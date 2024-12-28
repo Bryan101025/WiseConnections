@@ -2,6 +2,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
 import { NotificationTriggers } from '../services/NotificationTriggers';
+import { OfflineQueue } from '../utils/offlineQueue';
+import NetInfo from '@react-native-community/netinfo';
+
 
 
 export interface Post {
@@ -76,45 +79,79 @@ export const usePosts = () => {
   };
 
   const createPost = async (content: string) => {
-    try {
-      setError(null);
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error('Not authenticated');
+  try {
+    setError(null);
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .from('posts')
-        .insert({
-          content,
-          user_id: userData.user.id,
-        })
-        .select(`
-          *,
-          user:profiles!user_id (
-            id,
-            first_name,
-            last_name,
-            profile_photo_url
-          )
-        `)
-        .single();
-
-      if (error) throw error;
-
-      // Add the new post to the state
-      setPosts(prev => [{
-        ...data,
+    // Check network status
+    const networkState = await NetInfo.fetch();
+    
+    if (!networkState.isConnected) {
+      // Create optimistic post
+      const optimisticPost: Post = {
+        id: `temp_${Date.now()}`,
+        content,
+        created_at: new Date().toISOString(),
         likes_count: 0,
         comments_count: 0,
         is_liked: false,
-      }, ...prev]);
+        user: {
+          id: userData.user.id,
+          first_name: userData.user.first_name,
+          last_name: userData.user.last_name,
+          profile_photo_url: userData.user.profile_photo_url,
+        },
+      };
 
-      return { data, error: null };
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create post';
-      setError(errorMessage);
-      return { data: null, error: errorMessage };
+      // Add to offline queue
+      await OfflineQueue.addToQueue({
+        type: 'create_post',
+        data: {
+          content,
+          user_id: userData.user.id,
+        },
+      });
+
+      // Update UI optimistically
+      setPosts(prev => [optimisticPost, ...prev]);
+      return { data: optimisticPost, error: null };
     }
-  };
+
+    // If online, proceed with normal creation
+    const { data, error } = await supabase
+      .from('posts')
+      .insert({
+        content,
+        user_id: userData.user.id,
+      })
+      .select(`
+        *,
+        user:profiles!user_id (
+          id,
+          first_name,
+          last_name,
+          profile_photo_url
+        )
+      `)
+      .single();
+
+    if (error) throw error;
+
+    setPosts(prev => [{
+      ...data,
+      likes_count: 0,
+      comments_count: 0,
+      is_liked: false,
+    }, ...prev]);
+
+    return { data, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Failed to create post';
+    setError(errorMessage);
+    return { data: null, error: errorMessage };
+  }
+};
 
   const deletePost = async (postId: string) => {
     try {
@@ -231,23 +268,23 @@ export const usePosts = () => {
   const loadMore = () => fetchPosts(Math.ceil(posts.length / 10) + 1);
 
     const handleLike = async (postId: string) => {
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error('Not authenticated');
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error('Not authenticated');
 
-      // Create like in database
-      const { error: likeError } = await supabase
-        .from('post_likes')
-        .insert({
+    // Check network status
+    const networkState = await NetInfo.fetch();
+    
+    if (!networkState.isConnected) {
+      // Add to offline queue
+      await OfflineQueue.addToQueue({
+        type: 'like_post',
+        data: {
           post_id: postId,
           user_id: userData.user.id,
-        });
+        },
+      });
 
-      if (likeError) throw likeError;
-
-      // Create notification
-      await NotificationTriggers.createLikeNotification(postId, userData.user.id);
-      
       // Update UI optimistically
       setPosts(prev => 
         prev.map(post => 
@@ -256,38 +293,53 @@ export const usePosts = () => {
             : post
         )
       );
-
-    } catch (error) {
-      console.error('Error handling like:', error);
+      return;
     }
-  };
+
+    // If online, proceed with normal like
+    const { error: likeError } = await supabase
+      .from('post_likes')
+      .insert({
+        post_id: postId,
+        user_id: userData.user.id,
+      });
+
+    if (likeError) throw likeError;
+
+    await NotificationTriggers.createLikeNotification(postId, userData.user.id);
+    
+    setPosts(prev => 
+      prev.map(post => 
+        post.id === postId 
+          ? { ...post, likes_count: post.likes_count + 1, is_liked: true }
+          : post
+      )
+    );
+  } catch (error) {
+    console.error('Error handling like:', error);
+  }
+};
 
   const handleComment = async (postId: string, content: string) => {
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error('Not authenticated');
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error('Not authenticated');
 
-      // Create comment in database
-      const { data: comment, error: commentError } = await supabase
-        .from('comments')
-        .insert({
+    // Check network status
+    const networkState = await NetInfo.fetch();
+    
+    if (!networkState.isConnected) {
+      // Add to offline queue
+      await OfflineQueue.addToQueue({
+        type: 'create_comment',
+        data: {
           post_id: postId,
           user_id: userData.user.id,
           content,
-        })
-        .select()
-        .single();
+        },
+      });
 
-      if (commentError) throw commentError;
-
-      // Create notification
-      await NotificationTriggers.createCommentNotification(
-        postId,
-        comment.id,
-        userData.user.id
-      );
-
-      // Update UI
+      // Update UI optimistically
       setPosts(prev =>
         prev.map(post =>
           post.id === postId
@@ -295,11 +347,39 @@ export const usePosts = () => {
             : post
         )
       );
-
-    } catch (error) {
-      console.error('Error handling comment:', error);
+      return;
     }
-  };
+
+    // If online, proceed with normal comment creation
+    const { data: comment, error: commentError } = await supabase
+      .from('comments')
+      .insert({
+        post_id: postId,
+        user_id: userData.user.id,
+        content,
+      })
+      .select()
+      .single();
+
+    if (commentError) throw commentError;
+
+    await NotificationTriggers.createCommentNotification(
+      postId,
+      comment.id,
+      userData.user.id
+    );
+
+    setPosts(prev =>
+      prev.map(post =>
+        post.id === postId
+          ? { ...post, comments_count: post.comments_count + 1 }
+          : post
+      )
+    );
+  } catch (error) {
+    console.error('Error handling comment:', error);
+  }
+};
 
   return {
     posts,

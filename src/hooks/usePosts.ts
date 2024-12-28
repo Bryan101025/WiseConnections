@@ -1,6 +1,8 @@
 // src/hooks/usePosts.ts
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
+import { NotificationTriggers } from '../services/NotificationTriggers';
+
 
 export interface Post {
   id: string;
@@ -228,6 +230,77 @@ export const usePosts = () => {
   const refresh = () => fetchPosts(1);
   const loadMore = () => fetchPosts(Math.ceil(posts.length / 10) + 1);
 
+    const handleLike = async (postId: string) => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error('Not authenticated');
+
+      // Create like in database
+      const { error: likeError } = await supabase
+        .from('post_likes')
+        .insert({
+          post_id: postId,
+          user_id: userData.user.id,
+        });
+
+      if (likeError) throw likeError;
+
+      // Create notification
+      await NotificationTriggers.createLikeNotification(postId, userData.user.id);
+      
+      // Update UI optimistically
+      setPosts(prev => 
+        prev.map(post => 
+          post.id === postId 
+            ? { ...post, likes_count: post.likes_count + 1, is_liked: true }
+            : post
+        )
+      );
+
+    } catch (error) {
+      console.error('Error handling like:', error);
+    }
+  };
+
+  const handleComment = async (postId: string, content: string) => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error('Not authenticated');
+
+      // Create comment in database
+      const { data: comment, error: commentError } = await supabase
+        .from('comments')
+        .insert({
+          post_id: postId,
+          user_id: userData.user.id,
+          content,
+        })
+        .select()
+        .single();
+
+      if (commentError) throw commentError;
+
+      // Create notification
+      await NotificationTriggers.createCommentNotification(
+        postId,
+        comment.id,
+        userData.user.id
+      );
+
+      // Update UI
+      setPosts(prev =>
+        prev.map(post =>
+          post.id === postId
+            ? { ...post, comments_count: post.comments_count + 1 }
+            : post
+        )
+      );
+
+    } catch (error) {
+      console.error('Error handling comment:', error);
+    }
+  };
+
   return {
     posts,
     loading,
@@ -237,5 +310,7 @@ export const usePosts = () => {
     loadMore,
     createPost,
     deletePost,
+    handleLike,
+    handleComment
   };
 };

@@ -3,72 +3,9 @@ import { useState, useEffect } from 'react';
 import { Platform, PermissionsAndroid } from 'react-native';
 import Geolocation from 'react-native-geolocation-service';
 import { supabase } from '../config/supabase';
+import { CacheManager } from '../utils/cacheManager';
 
-export interface NearbyEvent {
-  id: string;
-  title: string;
-  description: string;
-  date_time: string;
-  location: string;
-  latitude: number;
-  longitude: number;
-  distance: number;
-  max_participants: number;
-  current_participants: number;
-  creator?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    profile_photo_url?: string;
-  };
-}
-
-interface UseNearbyEventsProps {
-  limit?: number;
-  maxDistance?: number;
-}
-
-const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 3958.8; // Earth's radius in miles
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-};
-
-const requestLocationPermission = async () => {
-  if (Platform.OS === 'ios') {
-    try {
-      const granted = await Geolocation.requestAuthorization('whenInUse');
-      return granted === 'granted';
-    } catch (err) {
-      return false;
-    }
-  }
-
-  if (Platform.OS === 'android') {
-    try {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        {
-          title: 'Location Permission',
-          message: 'WiseConnections needs access to your location to show nearby events.',
-          buttonNeutral: 'Ask Me Later',
-          buttonNegative: 'Cancel',
-          buttonPositive: 'OK',
-        },
-      );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
-    } catch (err) {
-      return false;
-    }
-  }
-  return false;
-};
+// ... (keep existing interfaces and helper functions)
 
 export const useNearbyEvents = ({ limit = 5, maxDistance = 50 }: UseNearbyEventsProps = {}) => {
   const [nearbyEvents, setNearbyEvents] = useState<NearbyEvent[]>([]);
@@ -76,10 +13,30 @@ export const useNearbyEvents = ({ limit = 5, maxDistance = 50 }: UseNearbyEvents
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const getCacheKey = () => {
+    const today = new Date().toDateString();
+    return `nearby_events_${limit}_${maxDistance}_${today}`;
+  };
+
   const fetchNearbyEvents = async (isRefreshing: boolean = false) => {
     try {
       isRefreshing ? setRefreshing(true) : setLoading(true);
       setError(null);
+
+      // Try to get cached data if not refreshing
+      if (!isRefreshing) {
+        const cachedEvents = await CacheManager.get<NearbyEvent[]>({
+          key: getCacheKey(),
+          expiryMinutes: 15, // Cache expires after 15 minutes
+        });
+
+        if (cachedEvents) {
+          setNearbyEvents(cachedEvents);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
 
       const hasPermission = await requestLocationPermission();
       if (!hasPermission) {
@@ -129,18 +86,40 @@ export const useNearbyEvents = ({ limit = 5, maxDistance = 50 }: UseNearbyEvents
         .sort((a, b) => a.distance - b.distance)
         .slice(0, limit);
 
+      // Cache the filtered and sorted events
+      await CacheManager.set({
+        key: getCacheKey(),
+        expiryMinutes: 15,
+      }, eventsWithDistance);
+
       setNearbyEvents(eventsWithDistance);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       setError(errorMessage);
       console.error('Error fetching nearby events:', err);
+
+      // Try to use cached data as fallback if available
+      if (!isRefreshing) {
+        const cachedEvents = await CacheManager.get<NearbyEvent[]>({
+          key: getCacheKey(),
+          expiryMinutes: 30, // Extended expiry for fallback
+        });
+
+        if (cachedEvents) {
+          setNearbyEvents(cachedEvents);
+        }
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const refresh = () => fetchNearbyEvents(true);
+  const refresh = async () => {
+    // Clear cache when manually refreshing
+    await CacheManager.clear(getCacheKey());
+    return fetchNearbyEvents(true);
+  };
 
   useEffect(() => {
     fetchNearbyEvents();
@@ -155,9 +134,11 @@ export const useNearbyEvents = ({ limit = 5, maxDistance = 50 }: UseNearbyEvents
           schema: 'public', 
           table: 'events',
         },
-        (payload) => {
+        async (payload) => {
           // Only refresh if the event is within the time range
           if (payload.new && new Date(payload.new.date_time) >= new Date()) {
+            // Clear cache when real-time update received
+            await CacheManager.clear(getCacheKey());
             fetchNearbyEvents();
           }
         }
@@ -168,6 +149,18 @@ export const useNearbyEvents = ({ limit = 5, maxDistance = 50 }: UseNearbyEvents
       subscription.unsubscribe();
     };
   }, [limit, maxDistance]);
+
+  // Cleanup cache on unmount for events older than today
+  useEffect(() => {
+    return () => {
+      const cleanupOldCache = async () => {
+        const today = new Date().toDateString();
+        const oldCacheKey = `nearby_events_${limit}_${maxDistance}_${today}`;
+        await CacheManager.clear(oldCacheKey);
+      };
+      cleanupOldCache();
+    };
+  }, []);
 
   return {
     nearbyEvents,

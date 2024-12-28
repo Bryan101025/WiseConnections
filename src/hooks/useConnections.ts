@@ -1,6 +1,8 @@
 // src/hooks/useConnections.ts
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
+import { NotificationTriggers } from '../services/NotificationTriggers';
+
 
 type ConnectionStatus = 'pending' | 'connected';
 
@@ -168,28 +170,70 @@ export const useConnections = () => {
   };
 
   const connect = async (userId: string) => {
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error('Not authenticated');
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error('Not authenticated');
 
-      const { error } = await supabase
-        .from('connections')
-        .insert({
-          requester_id: userData.user.id,
-          receiver_id: userId,
-          status: 'connected'
-        });
+    const { error } = await supabase
+      .from('connections')
+      .insert({
+        requester_id: userData.user.id,
+        receiver_id: userId,
+        status: 'connected'
+      });
 
-      if (error) throw error;
-      
-      // Refresh connections
-      await Promise.all([fetchMyConnections(), fetchRecommended()]);
-      return { error: null };
-    } catch (error) {
-      return { error };
+    if (error) throw error;
+
+    // Create connection request notification
+    await NotificationTriggers.createConnectionNotification(
+      userData.user.id, // requesterId
+      userId // receiverId
+    );
+    
+    // Refresh connections
+    await Promise.all([fetchMyConnections(), fetchRecommended()]);
+    return { error: null };
+  } catch (error) {
+    return { error };
+  }
+};
+
+  const acceptConnection = async (connectionId: string) => {
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error('Not authenticated');
+
+    const { error } = await supabase
+      .from('connections')
+      .update({ status: 'connected' })
+      .eq('id', connectionId)
+      .eq('receiver_id', userData.user.id); // Ensure only receiver can accept
+
+    if (error) throw error;
+
+    // Create acceptance notification
+    const { data: connection } = await supabase
+      .from('connections')
+      .select('requester_id')
+      .eq('id', connectionId)
+      .single();
+
+    if (connection) {
+      await NotificationTriggers.createConnectionNotification(
+        userData.user.id, // accepterId
+        connection.requester_id, // original requesterId
+        'accepted' // optional parameter to indicate acceptance
+      );
     }
-  };
 
+    // Refresh connections
+    await Promise.all([fetchMyConnections(), fetchRecommended()]);
+    return { error: null };
+  } catch (error) {
+    return { error };
+  }
+};
+  
   const disconnect = async (userId: string) => {
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -229,6 +273,7 @@ export const useConnections = () => {
     loading,
     connect,
     disconnect,
+    acceptConnection
     refresh,
   };
 };

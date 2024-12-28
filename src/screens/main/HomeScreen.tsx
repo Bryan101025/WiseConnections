@@ -1,5 +1,5 @@
 // src/screens/main/HomeScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { NearbyEventsSection } from '../../components/NearbyEventsSection';
 import { ActivityFeedFilter } from '../../components/ActivityFeedFilter';
 import { PostCard } from '../../components/PostCard';
 import { EventCard } from '../../components/EventCard';
+import { supabase } from '../../config/supabase';
 
 type FeedType = 'posts' | 'events';
 
@@ -26,8 +27,143 @@ const HomeScreen = () => {
     loading, 
     refreshing, 
     handleRefresh, 
-    loadMore 
+    loadMore,
+    updateFeedItem,
+    removeFeedItem,
+    addFeedItem,
   } = useActivityFeed(activeFilter);
+
+  useEffect(() => {
+    // Set up real-time subscriptions
+    const postsChannel = supabase
+      .channel('public:posts')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'posts',
+        },
+        (payload) => {
+          if (activeFilter === 'posts') {
+            // Fetch complete post data with user info
+            supabase
+              .from('posts')
+              .select(`
+                *,
+                user:profiles!user_id (
+                  id,
+                  first_name,
+                  last_name,
+                  profile_photo_url
+                )
+              `)
+              .eq('id', payload.new.id)
+              .single()
+              .then(({ data }) => {
+                if (data) {
+                  addFeedItem({
+                    ...data,
+                    type: 'post',
+                    likes_count: 0,
+                    comments_count: 0,
+                    is_liked: false,
+                  });
+                }
+              });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'posts',
+        },
+        (payload) => {
+          if (activeFilter === 'posts') {
+            updateFeedItem(payload.new);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'posts',
+        },
+        (payload) => {
+          if (activeFilter === 'posts') {
+            removeFeedItem(payload.old.id);
+          }
+        }
+      )
+      .subscribe();
+
+    // Subscribe to events changes
+    const eventsChannel = supabase
+      .channel('public:events')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'events',
+        },
+        (payload) => {
+          if (activeFilter === 'events') {
+            if (payload.eventType === 'INSERT') {
+              addFeedItem({ ...payload.new, type: 'event' });
+            } else if (payload.eventType === 'UPDATE') {
+              updateFeedItem(payload.new);
+            } else if (payload.eventType === 'DELETE') {
+              removeFeedItem(payload.old.id);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    // Subscribe to interactions (likes and comments)
+    const interactionsChannel = supabase
+      .channel('public:interactions')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'post_likes',
+        },
+        () => {
+          if (activeFilter === 'posts') {
+            handleRefresh();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comments',
+        },
+        () => {
+          if (activeFilter === 'posts') {
+            handleRefresh();
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscriptions
+    return () => {
+      postsChannel.unsubscribe();
+      eventsChannel.unsubscribe();
+      interactionsChannel.unsubscribe();
+    };
+  }, [activeFilter]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -58,9 +194,15 @@ const HomeScreen = () => {
         >
           {feed.map(item => (
             item.type === 'post' ? (
-              <PostCard key={item.id} post={item} />
+              <PostCard 
+                key={item.id} 
+                post={item}
+              />
             ) : (
-              <EventCard key={item.id} event={item} />
+              <EventCard 
+                key={item.id} 
+                event={item}
+              />
             )
           ))}
           {loading && (

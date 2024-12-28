@@ -9,17 +9,25 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { EventPreviewCard } from './EventPreviewCard';
 import { useNearbyEvents } from '../hooks/useNearbyEvents';
+import { EventPreviewCard } from './EventPreviewCard';
 
 export const NearbyEventsSection = () => {
   const navigation = useNavigation();
-  const { nearbyEvents, loading } = useNearbyEvents();
+  const { nearbyEvents, loading, error } = useNearbyEvents();
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="small" color="#007AFF" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Unable to load nearby events</Text>
       </View>
     );
   }
@@ -31,7 +39,7 @@ export const NearbyEventsSection = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.sectionTitle}>Nearby Events</Text>
+        <Text style={styles.title}>Nearby Events</Text>
         <TouchableOpacity 
           onPress={() => navigation.navigate('Events')}
           style={styles.viewAllButton}
@@ -45,12 +53,14 @@ export const NearbyEventsSection = () => {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.eventsList}
       >
-        {nearbyEvents.map(event => (
+        {nearbyEvents.map((event) => (
           <EventPreviewCard
             key={event.id}
             event={event}
             onPress={() => 
-              navigation.navigate('EventDetails', { eventId: event.id })
+              navigation.navigate('EventDetails', { 
+                eventId: event.id 
+              })
             }
           />
         ))}
@@ -61,7 +71,7 @@ export const NearbyEventsSection = () => {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 20,
+    marginVertical: 16,
   },
   header: {
     flexDirection: 'row',
@@ -70,9 +80,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 12,
   },
-  sectionTitle: {
+  title: {
     fontSize: 20,
     fontWeight: '600',
+    color: '#000',
   },
   viewAllButton: {
     padding: 4,
@@ -89,5 +100,16 @@ const styles = StyleSheet.create({
     height: 100,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  errorContainer: {
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  errorText: {
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

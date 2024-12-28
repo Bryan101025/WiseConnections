@@ -3,6 +3,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { NotificationBell } from '../components/NotificationBell';
 
 // Import screens
 import HomeScreen from '../screens/main/HomeScreen';
@@ -18,19 +19,53 @@ const Stack = createNativeStackNavigator();
 // Stack navigators for each tab
 const HomeStack = () => {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="HomeScreen" component={HomeScreen} />
+    <Stack.Navigator
+      screenOptions={{
+        headerRight: () => <NotificationBell />,
+      }}
+    >
+      <Stack.Screen 
+        name="HomeScreen" 
+        component={HomeScreen}
+        options={{
+          headerTitle: 'Wise Connections',
+        }}
+      />
+    </Stack.Navigator>
+  );
+};
+
+const DiscoverStack = () => {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerRight: () => <NotificationBell />,
+      }}
+    >
+      <Stack.Screen 
+        name="DiscoverScreen" 
+        component={DiscoverScreen}
+        options={{
+          headerTitle: 'Discover',
+        }}
+      />
     </Stack.Navigator>
   );
 };
 
 const EventsStack = () => {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator
+      screenOptions={{
+        headerRight: () => <NotificationBell />,
+      }}
+    >
       <Stack.Screen 
         name="EventsScreen" 
         component={EventsScreen}
-        options={{ headerShown: false }}
+        options={{ 
+          headerTitle: 'Events',
+        }}
       />
       <Stack.Screen 
         name="EventDetails" 
@@ -38,7 +73,39 @@ const EventsStack = () => {
         options={{ 
           headerTitle: '',
           headerShadowVisible: false,
-          headerBackTitle: 'Back'
+          headerBackTitle: 'Back',
+        }}
+      />
+    </Stack.Navigator>
+  );
+};
+
+const ConnectionsStack = () => {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerRight: () => <NotificationBell />,
+      }}
+    >
+      <Stack.Screen 
+        name="ConnectionsScreen" 
+        component={ConnectionsScreen}
+        options={{
+          headerTitle: 'Connections',
+        }}
+      />
+    </Stack.Navigator>
+  );
+};
+
+const NotificationsStack = () => {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen 
+        name="NotificationsScreen" 
+        component={NotificationsScreen}
+        options={{
+          headerTitle: 'Notifications',
         }}
       />
     </Stack.Navigator>
@@ -70,7 +137,13 @@ const MainAppNavigator = () => {
               break;
           }
 
-          return <Icon name={iconName} size={size} color={color} />;
+          return (
+            <Icon 
+              name={iconName} 
+              size={size} 
+              color={color} 
+            />
+          );
         },
         tabBarActiveTintColor: '#000',
         tabBarInactiveTintColor: '#666',
@@ -93,7 +166,7 @@ const MainAppNavigator = () => {
       />
       <Tab.Screen 
         name="Discover" 
-        component={DiscoverScreen}
+        component={DiscoverStack}
         options={{
           tabBarLabel: 'Discover',
         }}
@@ -107,14 +180,14 @@ const MainAppNavigator = () => {
       />
       <Tab.Screen 
         name="Connections" 
-        component={ConnectionsScreen}
+        component={ConnectionsStack}
         options={{
           tabBarLabel: 'Connections',
         }}
       />
       <Tab.Screen 
         name="Notifications" 
-        component={NotificationsScreen}
+        component={NotificationsStack}
         options={{
           tabBarLabel: 'Notifications',
         }}

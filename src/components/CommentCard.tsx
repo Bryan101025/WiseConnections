@@ -54,8 +54,8 @@ export const CommentCard = ({ comment, onDelete }: CommentCardProps) => {
       delayLongPress={500}
     >
       <TouchableOpacity 
-        style={styles.userInfo}
-        onPress={() => navigation.navigate('Profile', { userId: comment.user.id })}
+  style={styles.userInfo}
+  onPress={() => navigation.navigate('Profile', { userId: comment.user.id })}
       >
         <Image
           style={styles.avatar}

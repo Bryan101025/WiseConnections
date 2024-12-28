@@ -13,11 +13,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConnections } from '../../hooks/useConnections';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import Icon from 'react-native-vector-icons/Ionicons';
 
-type Props = NativeStackScreenProps<any, 'Connections'>;
-
-// Following iOS convention for segmented controls
 const SegmentedControl = ({ selectedIndex, onChange }) => (
   <View style={styles.segmentedControl}>
     <TouchableOpacity 
@@ -51,70 +48,84 @@ const SegmentedControl = ({ selectedIndex, onChange }) => (
   </View>
 );
 
-// iOS-style user card following HIG
-const UserCard = ({ user, isConnected, onConnect, onMessage }) => (
+const ConnectionCard = ({ user, isRecommended, onConnect, onMessage }) => (
   <View style={styles.card}>
     <View style={styles.cardHeader}>
       <Image
         style={styles.avatar}
-        source={{ uri: user.photoUrl }}
-        defaultSource={require('../../assets/default-avatar.png')}
+        source={
+          user.profile_photo_url 
+            ? { uri: user.profile_photo_url }
+            : require('../../assets/default-avatar.png')
+        }
       />
       <View style={styles.userInfo}>
         <Text style={styles.userName}>
-          {`${user.first_name} ${user.last_name}`}
+          {user.first_name} {user.last_name}
         </Text>
-        <Text style={styles.userBio}>{user.bio}</Text>
+        {user.location && (
+          <Text style={styles.locationText}>
+            <Icon name="location-outline" size={14} color="#666" />
+            {' '}{user.location}
+          </Text>
+        )}
       </View>
     </View>
+
+    {user.bio && (
+      <Text style={styles.bioText} numberOfLines={2}>
+        {user.bio}
+      </Text>
+    )}
     
     <View style={styles.interestTags}>
-      {user.interests?.map(interest => (
+      {user.interests?.slice(0, 3).map(interest => (
         <View key={interest} style={styles.tag}>
           <Text style={styles.tagText}>{interest}</Text>
         </View>
       ))}
+      {user.interests?.length > 3 && (
+        <Text style={styles.moreInterests}>
+          +{user.interests.length - 3} more
+        </Text>
+      )}
     </View>
 
     <View style={styles.cardActions}>
-      <TouchableOpacity
-        style={[
-          styles.actionButton,
-          isConnected ? styles.disconnectButton : styles.connectButton
-        ]}
-        onPress={onConnect}
-      >
-        <Text style={[
-          styles.actionButtonText,
-          isConnected && styles.disconnectButtonText
-        ]}>
-          {isConnected ? 'Disconnect' : 'Connect'}
-        </Text>
-      </TouchableOpacity>
-      
-      {isConnected && (
+      {isRecommended ? (
         <TouchableOpacity
-          style={styles.messageButton}
-          onPress={onMessage}
+          style={styles.connectButton}
+          onPress={onConnect}
         >
-          <Text style={styles.messageButtonText}>Message</Text>
+          <Icon name="person-add-outline" size={18} color="#FFF" />
+          <Text style={styles.buttonText}>Connect</Text>
         </TouchableOpacity>
+      ) : (
+        <>
+          <TouchableOpacity
+            style={styles.messageButton}
+            onPress={onMessage}
+          >
+            <Icon name="chatbubble-outline" size={18} color="#FFF" />
+            <Text style={styles.buttonText}>Message</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.disconnectButton}
+            onPress={onConnect}
+          >
+            <Icon name="person-remove-outline" size={18} color="#FFF" />
+            <Text style={styles.buttonText}>Disconnect</Text>
+          </TouchableOpacity>
+        </>
       )}
     </View>
   </View>
 );
 
-const ConnectionsScreen: React.FC<Props> = ({ navigation }) => {
+const ConnectionsScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [selectedTab, setSelectedTab] = useState(0);
-  const {
-    myConnections,
-    recommended,
-    loading,
-    connect,
-    disconnect,
-    refresh
-  } = useConnections();
+  const { myConnections, recommended, loading, connect, disconnect, refresh } = useConnections();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -136,12 +147,12 @@ const ConnectionsScreen: React.FC<Props> = ({ navigation }) => {
           {loading ? (
             <ActivityIndicator style={styles.loader} color="#007AFF" />
           ) : selectedTab === 0 ? (
-            <View style={styles.connectionsList}>
+            <View style={styles.cardsList}>
               {myConnections.map(connection => (
-                <UserCard
+                <ConnectionCard
                   key={connection.id}
                   user={connection.connected_user}
-                  isConnected={true}
+                  isRecommended={false}
                   onConnect={() => disconnect(connection.connected_user.id)}
                   onMessage={() => navigation.navigate('Chat', { 
                     userId: connection.connected_user.id,
@@ -150,25 +161,31 @@ const ConnectionsScreen: React.FC<Props> = ({ navigation }) => {
                 />
               ))}
               {myConnections.length === 0 && (
-                <Text style={styles.emptyText}>
-                  You haven't connected with anyone yet
-                </Text>
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateTitle}>No Connections Yet</Text>
+                  <Text style={styles.emptyStateText}>
+                    Check out our recommendations to connect with others who share your interests.
+                  </Text>
+                </View>
               )}
             </View>
           ) : (
-            <View style={styles.recommendedList}>
+            <View style={styles.cardsList}>
               {recommended.map(user => (
-                <UserCard
+                <ConnectionCard
                   key={user.id}
                   user={user}
-                  isConnected={false}
+                  isRecommended={true}
                   onConnect={() => connect(user.id)}
                 />
               ))}
               {recommended.length === 0 && (
-                <Text style={styles.emptyText}>
-                  No recommendations available at the moment
-                </Text>
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateTitle}>No Recommendations</Text>
+                  <Text style={styles.emptyStateText}>
+                    We'll notify you when we find people with similar interests.
+                  </Text>
+                </View>
               )}
             </View>
           )}
@@ -179,27 +196,38 @@ const ConnectionsScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  // ... (keep all existing styles)
-  
-  // Add these new styles
-  scrollView: {
+  container: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+  },
+  content: {
     flex: 1,
   },
-  loader: {
-    marginTop: 20,
+  title: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 16,
+    paddingHorizontal: 16,
   },
-  connectionsList: {
-    padding: 16,
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#E5E5EA',
+    margin: 16,
+    borderRadius: 8,
+    padding: 2,
   },
-  recommendedList: {
-    padding: 16,
+  segment: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
   },
-  emptyText: {
-    textAlign: 'center',
+  selectedSegment: {
+    backgroundColor: '#FFFFFF',
+  },
+  segmentText: {
+    fontSize: 13,
     color: '#666',
-    fontSize: 15,
-    marginTop: 32,
+    fontWeight: '500',
   },
-});
-
-export default ConnectionsScreen;

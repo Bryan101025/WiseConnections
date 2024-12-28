@@ -7,7 +7,7 @@ import AuthNavigator from './src/navigation/AuthNavigator';
 import { View, Text } from 'react-native';
 import { CacheManager } from './src/utils/cacheManager';
 import { NotificationManager } from './src/utils/notificationManager';
-import messaging from '@react-native-firebase/messaging';
+import { RealtimeProvider } from './src/contexts/RealtimeContext';
 
 const Stack = createNativeStackNavigator();
 
@@ -58,31 +58,6 @@ export default function App() {
       }
     });
 
-    // Set up notification handlers
-    const unsubscribeOnMessage = messaging().onMessage(async remoteMessage => {
-      // Handle foreground messages
-      console.log('Received foreground message:', remoteMessage);
-      // You can add custom notification display here
-    });
-
-    const unsubscribeOnNotificationOpenedApp = messaging()
-      .onNotificationOpenedApp(remoteMessage => {
-        // Handle notification opened app from background state
-        console.log('Notification opened app:', remoteMessage);
-        // Add navigation logic here based on notification type
-      });
-
-    // Check if app was opened from a notification
-    messaging()
-      .getInitialNotification()
-      .then(remoteMessage => {
-        if (remoteMessage) {
-          // Handle notification that opened app from quit state
-          console.log('Initial notification:', remoteMessage);
-          // Add navigation logic here based on notification type
-        }
-      });
-
     // Set up periodic cache cleanup
     const cleanupInterval = setInterval(async () => {
       await CacheManager.cleanupExpiredCache();
@@ -91,8 +66,6 @@ export default function App() {
     // Cleanup subscriptions and intervals
     return () => {
       subscription?.unsubscribe();
-      unsubscribeOnMessage();
-      unsubscribeOnNotificationOpenedApp();
       clearInterval(cleanupInterval);
     };
   }, []);
@@ -107,18 +80,20 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator>
-        {!session ? (
-          <Stack.Screen 
-            name="Auth" 
-            component={AuthNavigator} 
-            options={{ headerShown: false }}
-          />
-        ) : (
-          <Stack.Screen name="Home" component={HomeScreen} />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <RealtimeProvider>
+      <NavigationContainer>
+        <Stack.Navigator>
+          {!session ? (
+            <Stack.Screen 
+              name="Auth" 
+              component={AuthNavigator} 
+              options={{ headerShown: false }}
+            />
+          ) : (
+            <Stack.Screen name="Home" component={HomeScreen} />
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </RealtimeProvider>
   );
 }

@@ -8,6 +8,7 @@ import { View, Text } from 'react-native';
 import { CacheManager } from './src/utils/cacheManager';
 import { NotificationManager } from './src/utils/notificationManager';
 import { RealtimeProvider } from './src/contexts/RealtimeContext';
+import { useRealtimeSubscriptions } from './src/hooks/useRealtimeSubscriptions';
 
 const Stack = createNativeStackNavigator();
 
@@ -17,6 +18,27 @@ const HomeScreen = () => (
     <Text>Welcome to Wise Connections!</Text>
   </View>
 );
+
+// Wrapper component to use hooks
+const AppContent = ({ session }) => {
+  useRealtimeSubscriptions(); // Add realtime subscriptions
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator>
+        {!session ? (
+          <Stack.Screen 
+            name="Auth" 
+            component={AuthNavigator} 
+            options={{ headerShown: false }}
+          />
+        ) : (
+          <Stack.Screen name="Home" component={HomeScreen} />
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+};
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -81,19 +103,7 @@ export default function App() {
 
   return (
     <RealtimeProvider>
-      <NavigationContainer>
-        <Stack.Navigator>
-          {!session ? (
-            <Stack.Screen 
-              name="Auth" 
-              component={AuthNavigator} 
-              options={{ headerShown: false }}
-            />
-          ) : (
-            <Stack.Screen name="Home" component={HomeScreen} />
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
+      <AppContent session={session} />
     </RealtimeProvider>
   );
 }

@@ -7,11 +7,14 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { ScreenTemplate } from '../../components/ScreenTemplate';
 import { supabase } from '../../config/supabase';
 import Icon from 'react-native-vector-icons/Ionicons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { LoadingPlaceholder, SkeletonPresets } from '../../components/shared/LoadingPlaceholder';
+import { LoadingOverlay } from '../../components/shared/LoadingOverlay';
 
 type Event = {
   id: string;
@@ -105,6 +108,64 @@ const EventsScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <ScrollView 
+          contentContainerStyle={styles.skeletonContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          {[1, 2, 3].map((_, index) => (
+            <View key={index} style={styles.skeletonCard}>
+              <SkeletonPresets.Title />
+              <SkeletonPresets.Text />
+              <View style={styles.skeletonMetadata}>
+                <SkeletonPresets.Text />
+                <SkeletonPresets.Text />
+                <SkeletonPresets.Text />
+              </View>
+              <View style={styles.skeletonFooter}>
+                <SkeletonPresets.Text />
+                <View style={styles.skeletonButton}>
+                  <SkeletonPresets.Text />
+                </View>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      );
+    }
+
+    if (events.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon 
+            name={activeTab === 'discover' ? 'calendar-outline' : 'bookmark-outline'} 
+            size={48} 
+            color="#666" 
+          />
+          <Text style={styles.emptyText}>
+            {activeTab === 'discover' 
+              ? 'No events available at the moment' 
+              : 'You haven't RSVP'd to any events yet'}
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        data={events}
+        renderItem={({ item }) => <EventCard event={item} navigation={navigation} />}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.eventsList}
+        showsVerticalScrollIndicator={false}
+        refreshing={loading}
+        onRefresh={fetchEvents}
+      />
+    );
+  };
+
   return (
     <ScreenTemplate>
       <View style={styles.header}>
@@ -131,21 +192,143 @@ const EventsScreen: React.FC<Props> = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {loading ? (
-        <ActivityIndicator size="large" color="#000" style={styles.loader} />
-      ) : (
-        <FlatList
-          data={events}
-          renderItem={({ item }) => <EventCard event={item} navigation={navigation} />}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.eventsList}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+      {renderContent()}
     </ScreenTemplate>
   );
 };
 
-// ... (keep the existing styles)
+const styles = StyleSheet.create({
+  header: {
+    padding: 16,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  tab: {
+    paddingVertical: 12,
+    marginRight: 24,
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#000',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  activeTabText: {
+    color: '#000',
+    fontWeight: '500',
+  },
+  eventCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  eventTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  eventDescription: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 16,
+  },
+  eventMetadata: {
+    marginBottom: 16,
+  },
+  metadataItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  metadataText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#666',
+  },
+  attendingInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  attendingText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  rsvpButton: {
+    backgroundColor: '#000',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 4,
+  },
+  rsvpButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eventsList: {
+    padding: 16,
+  },
+  // New styles for loading and empty states
+  skeletonContainer: {
+    padding: 16,
+  },
+  skeletonCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  skeletonMetadata: {
+    marginVertical: 16,
+    gap: 8,
+  },
+  skeletonFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  skeletonButton: {
+    width: 80,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+});
 
 export default EventsScreen;

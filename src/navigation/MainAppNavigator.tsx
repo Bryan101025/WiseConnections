@@ -14,6 +14,9 @@ import NotificationsScreen from '../screens/main/NotificationsScreen';
 import EventDetailsScreen from '../screens/main/EventDetailsScreen';
 import NotificationSettingsScreen from '../screens/main/NotificationSettingsScreen';
 import { TouchableOpacity } from 'react-native';
+import UserProfileScreen from '../screens/main/UserProfileScreen';
+import EditProfileScreen from '../screens/main/EditProfileScreen';
+
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -94,6 +97,30 @@ const ConnectionsStack = () => {
         component={ConnectionsScreen}
         options={{
           headerTitle: 'Connections',
+        }}
+      />
+      <Stack.Screen 
+        name="UserProfile" 
+        component={UserProfileScreen}
+        options={({ navigation, route }) => ({
+          headerTitle: 'Profile',
+          headerRight: route.params?.isOwnProfile ? () => (
+            <TouchableOpacity 
+              onPress={() => navigation.navigate('EditProfile')}
+              style={{ marginRight: 16 }}
+            >
+              <Icon name="pencil-outline" size={24} color="#007AFF" />
+            </TouchableOpacity>
+          ) : () => <NotificationBell />,
+        })}
+      />
+      <Stack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{
+          headerTitle: 'Edit Profile',
+          headerBackTitle: 'Back',
+          headerRight: null,
         }}
       />
     </Stack.Navigator>

@@ -1,5 +1,5 @@
 // src/screens/main/UserProfileScreen.tsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -12,6 +12,8 @@ import {
 import { ScreenTemplate } from '../../components/ScreenTemplate';
 import { useProfile } from '../../hooks/useProfile';
 import { useConnections } from '../../hooks/useConnections';
+import { supabase } from '../../config/supabase';
+import Icon from 'react-native-vector-icons/Ionicons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LoadingPlaceholder, SkeletonPresets } from '../../components/shared/LoadingPlaceholder';
 
@@ -21,6 +23,15 @@ const UserProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const userId = route.params?.userId;
   const { profile, loading } = useProfile(userId);
   const { sendConnectionRequest } = useConnections();
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
+
+  useEffect(() => {
+    const checkProfileOwnership = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      setIsOwnProfile(!userId || userId === userData.user?.id);
+    };
+    checkProfileOwnership();
+  }, [userId]);
 
   const handleConnect = async () => {
     const { error } = await sendConnectionRequest(userId);
@@ -61,7 +72,6 @@ const UserProfileScreen: React.FC<Props> = ({ route, navigation }) => {
       </ScreenTemplate>
     );
   }
-
   if (!profile) {
     return (
       <ScreenTemplate>
@@ -105,17 +115,26 @@ const UserProfileScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         </View>
 
-        <TouchableOpacity 
-          style={styles.connectButton} 
-          onPress={handleConnect}
-        >
-          <Text style={styles.connectButtonText}>Connect</Text>
-        </TouchableOpacity>
+        {isOwnProfile ? (
+          <TouchableOpacity 
+            style={styles.editButton} 
+            onPress={() => navigation.navigate('EditProfile')}
+          >
+            <Icon name="pencil-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.editButtonText}>Edit Profile</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={styles.connectButton} 
+            onPress={handleConnect}
+          >
+            <Text style={styles.connectButtonText}>Connect</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </ScreenTemplate>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -178,6 +197,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  editButton: {
+    backgroundColor: '#007AFF',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  editButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   // Skeleton styles
   skeletonAvatar: {

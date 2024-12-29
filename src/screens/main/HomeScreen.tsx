@@ -16,6 +16,8 @@ import { ActivityFeedFilter } from '../../components/ActivityFeedFilter';
 import { PostCard } from '../../components/PostCard';
 import { EventCard } from '../../components/EventCard';
 import { supabase } from '../../config/supabase';
+import { LoadingPlaceholder, SkeletonPresets } from '../../components/shared/LoadingPlaceholder';
+import { LoadingOverlay } from '../../components/shared/LoadingOverlay';
 
 type FeedType = 'posts' | 'events';
 
@@ -165,19 +167,30 @@ const HomeScreen = () => {
     };
   }, [activeFilter]);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={[styles.content, { paddingTop: insets.top }]}>
-        <Text style={styles.title}>Wise Connections</Text>
-        <Text style={styles.subtitle}>Connecting 55+ in Myrtle Beach</Text>
+return (
+  <SafeAreaView style={styles.container}>
+    <View style={[styles.content, { paddingTop: insets.top }]}>
+      <Text style={styles.title}>Wise Connections</Text>
+      <Text style={styles.subtitle}>Connecting 55+ in Myrtle Beach</Text>
 
-        <NearbyEventsSection />
+      <NearbyEventsSection />
 
-        <ActivityFeedFilter
-          activeFilter={activeFilter}
-          onFilterChange={setActiveFilter}
-        />
+      <ActivityFeedFilter
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+      />
 
+      {loading && !refreshing ? (
+        // Show skeleton loading on initial load
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.skeletonContainer}
+        >
+          {[1, 2, 3].map((_, index) => (
+            <SkeletonPresets.Card key={index} style={styles.skeletonCard} />
+          ))}
+        </ScrollView>
+      ) : (
         <ScrollView
           style={styles.scrollView}
           refreshControl={
@@ -192,53 +205,62 @@ const HomeScreen = () => {
           }}
           scrollEventThrottle={16}
         >
-          {feed.map(item => (
-            item.type === 'post' ? (
-              <PostCard 
-                key={item.id} 
-                post={item}
-              />
-            ) : (
-              <EventCard 
-                key={item.id} 
-                event={item}
-              />
-            )
-          ))}
-          {loading && (
-            <ActivityIndicator style={styles.loader} color="#007AFF" />
+          {feed.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                {activeFilter === 'posts' 
+                  ? 'No posts yet. Be the first to share something!' 
+                  : 'No events available at the moment.'}
+              </Text>
+            </View>
+          ) : (
+            <>
+              {feed.map(item => (
+                item.type === 'post' ? (
+                  <PostCard 
+                    key={item.id} 
+                    post={item}
+                  />
+                ) : (
+                  <EventCard 
+                    key={item.id} 
+                    event={item}
+                  />
+                )
+              ))}
+              {loading && (
+                <ActivityIndicator style={styles.loader} color="#007AFF" />
+              )}
+            </>
           )}
         </ScrollView>
-      </View>
-    </SafeAreaView>
-  );
-};
+      )}
+    </View>
+  </SafeAreaView>
+);
 
+// Add these new styles to your existing StyleSheet:
 const styles = StyleSheet.create({
-  container: {
+  // ... keep your existing styles ...
+
+  skeletonContainer: {
+    padding: 16,
+  },
+  skeletonCard: {
+    marginBottom: 16,
+  },
+  emptyContainer: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    marginTop: 40,
   },
-  content: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  subtitle: {
+  emptyText: {
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 20,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  loader: {
-    padding: 20,
+    lineHeight: 24,
   },
 });
 

@@ -393,7 +393,218 @@ const DiscoverScreen = ({ navigation }) => {
     </ErrorBoundary>
   );
 };
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+  },
+  loadingContainer: {
+    padding: 16,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  interestsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    marginBottom: 24,
+  },
+  interestChip: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    margin: 4,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  selectedInterestChip: {
+    backgroundColor: '#000000',
+  },
+  interestText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  selectedInterestText: {
+    color: '#FFFFFF',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  eventCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  eventTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#000',
+  },
+  eventDateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  eventDate: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  userCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  userAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#F2F2F7',
+  },
+  userInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+    color: '#000',
+  },
+  userInterests: {
+    fontSize: 14,
+    color: '#666',
+  },
+  skeletonTitle: {
+    height: 28,
+    width: '60%',
+    marginBottom: 16,
+    marginHorizontal: 16,
+  },
+  skeletonInterests: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    marginBottom: 24,
+  },
+  skeletonInterest: {
+    height: 36,
+    width: 100,
+    borderRadius: 18,
+    margin: 4,
+  },
+  skeletonSectionTitle: {
+    height: 24,
+    width: '40%',
+    marginBottom: 12,
+    marginHorizontal: 16,
+  },
+  skeletonCard: {
+    height: 100,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+  },
+  // New optimized styles
+  animatedContainer: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+  },
+  cardShadow: {
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  shimmerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  touchableHighlight: {
+    overflow: 'hidden',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#FF3B30',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  retryButton: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
 
-// ... styles remain the same ...
-
-export default memo(DiscoverScreen);

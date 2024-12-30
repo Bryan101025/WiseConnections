@@ -1,5 +1,5 @@
 // src/screens/main/ConnectionsScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,10 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Image,
-  RefreshControl,
   Animated,
+  FlatList,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConnections } from '../../hooks/useConnections';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -18,9 +18,11 @@ import { ErrorBoundary } from '../../components/shared/ErrorBoundary';
 import { ErrorView } from '../../components/shared/ErrorView';
 import { useNetworkError } from '../../hooks/useNetworkError';
 import { LoadingPlaceholder, SkeletonPresets } from '../../components/shared/LoadingPlaceholder';
+import { CacheManager } from '../../utils/cacheManager';
+import { MemoryManager } from '../../utils/memoryManager';
 
-const SegmentedControl = ({ selectedIndex, onChange }) => {
-  const slideAnimation = new Animated.Value(selectedIndex);
+const SegmentedControl = memo(({ selectedIndex, onChange }) => {
+  const slideAnimation = useRef(new Animated.Value(selectedIndex)).current;
 
   useEffect(() => {
     Animated.spring(slideAnimation, {
@@ -70,11 +72,41 @@ const SegmentedControl = ({ selectedIndex, onChange }) => {
       </TouchableOpacity>
     </View>
   );
-};
+});
 
-const ConnectionCard = ({ user, isRecommended, onConnect, onMessage, index }) => {
-  const fadeAnim = new Animated.Value(0);
-  const slideAnim = new Animated.Value(50);
+const OptimizedImage = memo(({ uri, style }) => {
+  if (!uri) {
+    return (
+      <FastImage
+        style={style}
+        source={require('../../assets/default-avatar.png')}
+        resizeMode={FastImage.resizeMode.cover}
+      />
+    );
+  }
+
+  return (
+    <FastImage
+      style={style}
+      source={{
+        uri,
+        priority: FastImage.priority.normal,
+        cache: FastImage.cacheControl.immutable,
+      }}
+      resizeMode={FastImage.resizeMode.cover}
+    />
+  );
+});
+
+const InterestTag = memo(({ interest }) => (
+  <View style={styles.tag}>
+    <Text style={styles.tagText}>{interest}</Text>
+  </View>
+));
+
+const ConnectionCard = memo(({ user, isRecommended, onConnect, onMessage, index }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -94,6 +126,19 @@ const ConnectionCard = ({ user, isRecommended, onConnect, onMessage, index }) =>
     ]).start();
   }, []);
 
+  const renderInterests = useCallback(() => (
+    <View style={styles.interestTags}>
+      {user.interests?.slice(0, 3).map(interest => (
+        <InterestTag key={interest} interest={interest} />
+      ))}
+      {user.interests?.length > 3 && (
+        <Text style={styles.moreInterests}>
+          +{user.interests.length - 3} more
+        </Text>
+      )}
+    </View>
+  ), [user.interests]);
+
   return (
     <Animated.View
       style={[
@@ -105,13 +150,9 @@ const ConnectionCard = ({ user, isRecommended, onConnect, onMessage, index }) =>
       ]}
     >
       <View style={styles.cardHeader}>
-        <Image
+        <OptimizedImage
+          uri={user.profile_photo_url}
           style={styles.avatar}
-          source={
-            user.profile_photo_url 
-              ? { uri: user.profile_photo_url }
-              : require('../../assets/default-avatar.png')
-          }
         />
         <View style={styles.userInfo}>
           <Text style={styles.userName}>
@@ -131,18 +172,8 @@ const ConnectionCard = ({ user, isRecommended, onConnect, onMessage, index }) =>
           {user.bio}
         </Text>
       )}
-      <View style={styles.interestTags}>
-        {user.interests?.slice(0, 3).map(interest => (
-          <View key={interest} style={styles.tag}>
-            <Text style={styles.tagText}>{interest}</Text>
-          </View>
-        ))}
-        {user.interests?.length > 3 && (
-          <Text style={styles.moreInterests}>
-            +{user.interests.length - 3} more
-          </Text>
-        )}
-      </View>
+
+      {renderInterests()}
 
       <View style={styles.cardActions}>
         {isRecommended ? (
@@ -173,13 +204,31 @@ const ConnectionCard = ({ user, isRecommended, onConnect, onMessage, index }) =>
       </View>
     </Animated.View>
   );
-};
+});
+
+const EmptyState = memo(({ type }) => (
+  <View style={styles.emptyState}>
+    <Icon 
+      name={type === 'connections' ? 'people-outline' : 'search-outline'} 
+      size={48} 
+      color="#666" 
+    />
+    <Text style={styles.emptyStateTitle}>
+      {type === 'connections' ? 'No Connections Yet' : 'No Recommendations'}
+    </Text>
+    <Text style={styles.emptyStateText}>
+      {type === 'connections' 
+        ? 'Check out our recommendations to connect with others who share your interests.'
+        : 'We'll notify you when we find people with similar interests.'}
+    </Text>
+  </View>
+));
 
 const ConnectionsScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [selectedTab, setSelectedTab] = useState(0);
   const { 
-    myConnections, 
+       myConnections, 
     recommended, 
     loading, 
     error,
@@ -189,13 +238,20 @@ const ConnectionsScreen = ({ navigation }) => {
   } = useConnections();
   const { isOnline, handleError, clearError } = useNetworkError();
   const [refreshing, setRefreshing] = useState(false);
+  const isMounted = useRef(true);
+  const dataCache = useRef(new Map());
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    clearError();
-    await refresh();
-    setRefreshing(false);
-  };
+  const handleRefresh = useCallback(async () => {
+    if (isMounted.current) {
+      setRefreshing(true);
+      clearError();
+      dataCache.current.clear();
+      await refresh();
+      if (isMounted.current) {
+        setRefreshing(false);
+      }
+    }
+  }, [refresh, clearError]);
 
   useEffect(() => {
     if (error) {
@@ -203,17 +259,48 @@ const ConnectionsScreen = ({ navigation }) => {
     }
   }, [error]);
 
-  if (!isOnline) {
-    return (
-      <ErrorView
-        error="No internet connection. Please check your network and try again."
-        icon="cloud-offline-outline"
-        onRetry={handleRefresh}
-      />
-    );
-  }
+  useEffect(() => {
+    MemoryManager.incrementListeners();
+    return () => {
+      isMounted.current = false;
+      MemoryManager.decrementListeners();
+      dataCache.current.clear();
+    };
+  }, []);
 
-  const renderContent = () => {
+  const renderConnectionsList = useCallback(({ item: connection, index }) => (
+    <ConnectionCard
+      user={connection.connected_user}
+      isRecommended={false}
+      onConnect={() => disconnect(connection.connected_user.id)}
+      onMessage={() => navigation.navigate('Chat', { 
+        userId: connection.connected_user.id,
+        userName: `${connection.connected_user.first_name} ${connection.connected_user.last_name}`
+      })}
+      index={index}
+    />
+  ), [disconnect, navigation]);
+
+  const renderRecommendedList = useCallback(({ item: user, index }) => (
+    <ConnectionCard
+      user={user}
+      isRecommended={true}
+      onConnect={() => connect(user.id)}
+      index={index}
+    />
+  ), [connect]);
+
+  const renderContent = useCallback(() => {
+    if (!isOnline) {
+      return (
+        <ErrorView
+          error="No internet connection. Please check your network and try again."
+          icon="cloud-offline-outline"
+          onRetry={handleRefresh}
+        />
+      );
+    }
+
     if (loading && !refreshing) {
       return (
         <ScrollView style={styles.cardsList}>
@@ -242,10 +329,20 @@ const ConnectionsScreen = ({ navigation }) => {
       );
     }
 
+    const data = selectedTab === 0 ? myConnections : recommended;
+    const renderItem = selectedTab === 0 ? renderConnectionsList : renderRecommendedList;
+    const emptyStateType = selectedTab === 0 ? 'connections' : 'recommended';
+
     return (
-      <ScrollView 
-        style={styles.scrollView}
-        contentInsetAdjustmentBehavior="automatic"
+      <FlatList
+        data={data}
+        renderItem={renderItem}
+        keyExtractor={item => item.id}
+        contentContainerStyle={[
+          styles.cardsList,
+          data.length === 0 && styles.emptyListContainer
+        ]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
@@ -253,57 +350,24 @@ const ConnectionsScreen = ({ navigation }) => {
             tintColor="#007AFF"
           />
         }
-      >
-        {selectedTab === 0 ? (
-          <View style={styles.cardsList}>
-            {myConnections.map((connection, index) => (
-              <ConnectionCard
-                key={connection.id}
-                user={connection.connected_user}
-                isRecommended={false}
-                onConnect={() => disconnect(connection.connected_user.id)}
-                onMessage={() => navigation.navigate('Chat', { 
-                  userId: connection.connected_user.id,
-                  userName: `${connection.connected_user.first_name} ${connection.connected_user.last_name}`
-                })}
-                index={index}
-              />
-            ))}
-            {myConnections.length === 0 && (
-              <View style={styles.emptyState}>
-                <Icon name="people-outline" size={48} color="#666" />
-                <Text style={styles.emptyStateTitle}>No Connections Yet</Text>
-                <Text style={styles.emptyStateText}>
-                  Check out our recommendations to connect with others who share your interests.
-                </Text>
-              </View>
-            )}
-          </View>
-        ) : (
-          <View style={styles.cardsList}>
-            {recommended.map((user, index) => (
-              <ConnectionCard
-                key={user.id}
-                user={user}
-                isRecommended={true}
-                onConnect={() => connect(user.id)}
-                index={index}
-              />
-            ))}
-            {recommended.length === 0 && (
-              <View style={styles.emptyState}>
-                <Icon name="search-outline" size={48} color="#666" />
-                <Text style={styles.emptyStateTitle}>No Recommendations</Text>
-                <Text style={styles.emptyStateText}>
-                  We'll notify you when we find people with similar interests.
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-      </ScrollView>
+        ListEmptyComponent={<EmptyState type={emptyStateType} />}
+        windowSize={5}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={true}
+      />
     );
-  };
+  }, [
+    isOnline, 
+    loading, 
+    refreshing, 
+    selectedTab, 
+    myConnections, 
+    recommended, 
+    renderConnectionsList, 
+    renderRecommendedList, 
+    handleRefresh
+  ]);
 
   return (
     <ErrorBoundary>
@@ -369,15 +433,16 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
   },
-    selectedSegmentText: {
+  selectedSegmentText: {
     color: '#000',
     fontWeight: '600',
   },
-  scrollView: {
-    flex: 1,
-  },
   cardsList: {
     padding: 16,
+  },
+  emptyListContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -414,7 +479,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
-  bioText: {
+    bioText: {
     fontSize: 15,
     color: '#666',
     marginBottom: 12,
@@ -499,12 +564,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  // Skeleton styles
   skeletonCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   skeletonHeader: {
     flexDirection: 'row',
@@ -549,4 +618,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ConnectionsScreen;
+export default memo(ConnectionsScreen);
+

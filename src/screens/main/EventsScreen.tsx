@@ -1,5 +1,5 @@
 // src/screens/main/EventsScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,8 @@ import { ErrorBoundary } from '../../components/shared/ErrorBoundary';
 import { ErrorView } from '../../components/shared/ErrorView';
 import { useNetworkError } from '../../hooks/useNetworkError';
 import { format } from 'date-fns';
+import { CacheManager } from '../../utils/cacheManager';
+import { MemoryManager } from '../../utils/memoryManager';
 
 type Event = {
   id: string;
@@ -31,16 +33,26 @@ type Event = {
 
 type Props = NativeStackScreenProps<any, 'Events'>;
 
-const EventCard = ({ event, navigation }) => {
-  const tabAnimation = new Animated.Value(0);
-  
+const AnimatedEventCard = memo(({ event, navigation, index }) => {
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    Animated.spring(tabAnimation, {
-      toValue: 1,
-      useNativeDriver: true,
-      tension: 50,
-      friction: 7,
-    }).start();
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        delay: index * 100,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 7,
+        delay: index * 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
   return (
@@ -48,13 +60,8 @@ const EventCard = ({ event, navigation }) => {
       style={[
         styles.eventCard,
         {
-          opacity: tabAnimation,
-          transform: [{
-            translateY: tabAnimation.interpolate({
-              inputRange: [0, 1],
-              outputRange: [50, 0],
-            }),
-          }],
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }],
         },
       ]}
     >
@@ -93,7 +100,18 @@ const EventCard = ({ event, navigation }) => {
       </View>
     </Animated.View>
   );
-};
+});
+
+const TabButton = memo(({ label, isActive, onPress }) => (
+  <TouchableOpacity
+    style={[styles.tab, isActive && styles.activeTab]}
+    onPress={onPress}
+  >
+    <Text style={[styles.tabText, isActive && styles.activeTabText]}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+));
 
 const EventsScreen: React.FC<Props> = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState('discover');
@@ -102,9 +120,16 @@ const EventsScreen: React.FC<Props> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const { isOnline, handleError, clearError } = useNetworkError();
   const [error, setError] = useState<string | null>(null);
-  const tabAnimation = new Animated.Value(1);
+  
+  const dataCache = useRef(new Map());
+  const isMounted = useRef(true);
+  const isFetchingRef = useRef(false);
+  const tabAnimation = useRef(new Animated.Value(1)).current;
 
-  const animateTabChange = () => {
+  const getCacheKey = useCallback((tab: string) => 
+    `events_${tab}_${new Date().toDateString()}`, []);
+
+  const animateTabChange = useCallback(() => {
     Animated.sequence([
       Animated.timing(tabAnimation, {
         toValue: 0,
@@ -117,62 +142,113 @@ const EventsScreen: React.FC<Props> = ({ navigation }) => {
         useNativeDriver: true,
       }),
     ]).start();
-  };
+  }, []);
 
-  useEffect(() => {
-    animateTabChange();
-    fetchEvents();
-  }, [activeTab]);
+  const fetchEvents = useCallback(async (isRefreshing = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
 
-  const fetchEvents = async (isRefreshing = false) => {
     try {
       if (isRefreshing) {
         setRefreshing(true);
+        dataCache.current.clear();
+        await CacheManager.clear(getCacheKey(activeTab));
       } else {
         setLoading(true);
       }
       setError(null);
+
+      // Check memory cache first
+      if (!isRefreshing && dataCache.current.has(activeTab)) {
+        const cachedData = dataCache.current.get(activeTab);
+        setEvents(cachedData);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      // Check persistent cache
+      if (!isRefreshing) {
+        const cachedData = await CacheManager.get<Event[]>({
+          key: getCacheKey(activeTab),
+          expiryMinutes: 5,
+        });
+
+        if (cachedData) {
+          dataCache.current.set(activeTab, cachedData);
+          setEvents(cachedData);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
       
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error('Not authenticated');
 
-      if (activeTab === 'discover') {
-        const { data, error } = await supabase
-          .from('events')
-          .select('*')
-          .gte('date_time', new Date().toISOString())
-          .order('date_time', { ascending: true });
+      let query = supabase
+        .from('events')
+        .select('*')
+        .gte('date_time', new Date().toISOString())
+        .order('date_time', { ascending: true });
 
-        if (error) throw error;
-        setEvents(data || []);
-      } else {
-        const { data, error } = await supabase
-          .from('events')
-          .select('*')
-          .gte('date_time', new Date().toISOString())
+      if (activeTab === 'going') {
+        query = query
           .eq('event_participants.participant_id', userData.user.id)
-          .eq('event_participants.status', 'registered')
-          .order('date_time', { ascending: true });
-
-        if (error) throw error;
-        setEvents(data || []);
+          .eq('event_participants.status', 'registered');
       }
+
+      const { data, error: fetchError } = await query;
+
+      if (fetchError) throw fetchError;
+
+      // Update both caches
+      const eventsData = data || [];
+      dataCache.current.set(activeTab, eventsData);
+      await CacheManager.set({
+        key: getCacheKey(activeTab),
+        expiryMinutes: 5,
+      }, eventsData);
+
+      if (isMounted.current) {
+        setEvents(eventsData);
+      }
+
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error fetching events';
       setError(errorMessage);
       handleError(err);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMounted.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+      isFetchingRef.current = false;
     }
-  };
+  }, [activeTab]);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     clearError();
     fetchEvents(true);
-  };
+  }, [fetchEvents, clearError]);
 
-  const renderContent = () => {
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab);
+    animateTabChange();
+  }, [animateTabChange]);
+
+  useEffect(() => {
+    MemoryManager.incrementListeners();
+    fetchEvents();
+
+    return () => {
+      isMounted.current = false;
+      MemoryManager.decrementListeners();
+      dataCache.current.clear();
+    };
+  }, [activeTab]);
+
+  const renderContent = useCallback(() => {
     if (!isOnline) {
       return (
         <ErrorView
@@ -221,7 +297,7 @@ const EventsScreen: React.FC<Props> = ({ navigation }) => {
 
     if (events.length === 0) {
       return (
-               <View style={styles.emptyContainer}>
+        <View style={styles.emptyContainer}>
           <Icon 
             name={activeTab === 'discover' ? 'calendar-outline' : 'bookmark-outline'} 
             size={48} 
@@ -240,16 +316,26 @@ const EventsScreen: React.FC<Props> = ({ navigation }) => {
       <Animated.View style={{ opacity: tabAnimation }}>
         <FlatList
           data={events}
-          renderItem={({ item }) => <EventCard event={item} navigation={navigation} />}
+          renderItem={({ item, index }) => (
+            <AnimatedEventCard 
+              event={item} 
+              navigation={navigation}
+              index={index}
+            />
+          )}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.eventsList}
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
+          windowSize={5}
+          maxToRenderPerBatch={5}
+          updateCellsBatchingPeriod={50}
+          removeClippedSubviews={true}
         />
       </Animated.View>
     );
-  };
+  }, [isOnline, loading, refreshing, error, events, activeTab, tabAnimation]);
 
   return (
     <ErrorBoundary>
@@ -259,23 +345,16 @@ const EventsScreen: React.FC<Props> = ({ navigation }) => {
         </View>
 
         <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'discover' && styles.activeTab]}
-            onPress={() => setActiveTab('discover')}
-          >
-            <Text style={[styles.tabText, activeTab === 'discover' && styles.activeTabText]}>
-              Discover
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'going' && styles.activeTab]}
-            onPress={() => setActiveTab('going')}
-          >
-            <Text style={[styles.tabText, activeTab === 'going' && styles.activeTabText]}>
-              Going
-            </Text>
-          </TouchableOpacity>
+          <TabButton
+            label="Discover"
+            isActive={activeTab === 'discover'}
+            onPress={() => handleTabChange('discover')}
+          />
+          <TabButton
+            label="Going"
+            isActive={activeTab === 'going'}
+            onPress={() => handleTabChange('going')}
+          />
         </View>
 
         {renderContent()}
@@ -397,7 +476,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  skeletonMetadata: {
+    skeletonMetadata: {
     marginVertical: 16,
     gap: 8,
   },
@@ -427,6 +506,53 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
+  // New optimized styles
+  animatedContainer: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+  },
+  cardShadow: {
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  touchableHighlight: {
+    overflow: 'hidden',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#FF3B30',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  retryButton: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
 
-export default EventsScreen;
+export default memo(EventsScreen);

@@ -18,6 +18,9 @@ import { EventCard } from '../../components/EventCard';
 import { supabase } from '../../config/supabase';
 import { LoadingPlaceholder, SkeletonPresets } from '../../components/shared/LoadingPlaceholder';
 import { LoadingOverlay } from '../../components/shared/LoadingOverlay';
+import { ErrorBoundary } from '../../components/shared/ErrorBoundary';
+import { ErrorView } from '../../components/shared/ErrorView';
+import { useNetworkError } from '../../hooks/useNetworkError';
 
 type FeedType = 'posts' | 'events';
 
@@ -28,12 +31,27 @@ const HomeScreen = () => {
     feed, 
     loading, 
     refreshing, 
+    error,
     handleRefresh, 
     loadMore,
     updateFeedItem,
     removeFeedItem,
     addFeedItem,
   } = useActivityFeed(activeFilter);
+  const { isOnline, handleError, clearError } = useNetworkError();
+
+  // Error handling
+  useEffect(() => {
+    if (error) {
+      handleError(error);
+    }
+  }, [error]);
+
+  // Retry handler
+  const handleRetry = async () => {
+    clearError();
+    await handleRefresh();
+  };
 
   useEffect(() => {
     // Set up real-time subscriptions
@@ -75,8 +93,7 @@ const HomeScreen = () => {
               });
           }
         }
-      )
-      .on(
+         .on(
         'postgres_changes',
         {
           event: 'UPDATE',
@@ -166,83 +183,124 @@ const HomeScreen = () => {
       interactionsChannel.unsubscribe();
     };
   }, [activeFilter]);
+    return (
+    <ErrorBoundary>
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.content, { paddingTop: insets.top }]}>
+          <Text style={styles.title}>Wise Connections</Text>
+          <Text style={styles.subtitle}>Connecting 55+ in Myrtle Beach</Text>
 
-return (
-  <SafeAreaView style={styles.container}>
-    <View style={[styles.content, { paddingTop: insets.top }]}>
-      <Text style={styles.title}>Wise Connections</Text>
-      <Text style={styles.subtitle}>Connecting 55+ in Myrtle Beach</Text>
+          <ErrorBoundary fallback={
+            <ErrorView 
+              error="Unable to load nearby events"
+              showRetry={false}
+            />
+          }>
+            <NearbyEventsSection />
+          </ErrorBoundary>
 
-      <NearbyEventsSection />
+          <ActivityFeedFilter
+            activeFilter={activeFilter}
+            onFilterChange={setActiveFilter}
+          />
 
-      <ActivityFeedFilter
-        activeFilter={activeFilter}
-        onFilterChange={setActiveFilter}
-      />
-
-      {loading && !refreshing ? (
-        // Show skeleton loading on initial load
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.skeletonContainer}
-        >
-          {[1, 2, 3].map((_, index) => (
-            <SkeletonPresets.Card key={index} style={styles.skeletonCard} />
-          ))}
-        </ScrollView>
-      ) : (
-        <ScrollView
-          style={styles.scrollView}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-          }
-          onScroll={({ nativeEvent }) => {
-            const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
-            const isEndReached = layoutMeasurement.height + contentOffset.y >= contentSize.height - 20;
-            if (isEndReached && !loading) {
-              loadMore();
-            }
-          }}
-          scrollEventThrottle={16}
-        >
-          {feed.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>
-                {activeFilter === 'posts' 
-                  ? 'No posts yet. Be the first to share something!' 
-                  : 'No events available at the moment.'}
-              </Text>
-            </View>
-          ) : (
-            <>
-              {feed.map(item => (
-                item.type === 'post' ? (
-                  <PostCard 
-                    key={item.id} 
-                    post={item}
-                  />
-                ) : (
-                  <EventCard 
-                    key={item.id} 
-                    event={item}
-                  />
-                )
+          {!isOnline ? (
+            <ErrorView
+              error="No internet connection. Please check your network and try again."
+              icon="cloud-offline-outline"
+              onRetry={handleRetry}
+            />
+          ) : loading && !refreshing ? (
+            <ScrollView 
+              style={styles.scrollView}
+              contentContainerStyle={styles.skeletonContainer}
+            >
+              {[1, 2, 3].map((_, index) => (
+                <SkeletonPresets.Card key={index} style={styles.skeletonCard} />
               ))}
-              {loading && (
-                <ActivityIndicator style={styles.loader} color="#007AFF" />
+            </ScrollView>
+          ) : error ? (
+            <ErrorView
+              error={error}
+              onRetry={handleRetry}
+            />
+          ) : (
+            <ScrollView
+              style={styles.scrollView}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+              }
+              onScroll={({ nativeEvent }) => {
+                const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+                const isEndReached = layoutMeasurement.height + contentOffset.y >= contentSize.height - 20;
+                if (isEndReached && !loading) {
+                  loadMore();
+                }
+              }}
+              scrollEventThrottle={16}
+            >
+              {feed.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>
+                    {activeFilter === 'posts' 
+                      ? 'No posts yet. Be the first to share something!' 
+                      : 'No events available at the moment.'}
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  {feed.map(item => (
+                    item.type === 'post' ? (
+                      <PostCard 
+                        key={item.id} 
+                        post={item}
+                      />
+                    ) : (
+                      <EventCard 
+                        key={item.id} 
+                        event={item}
+                      />
+                    )
+                  ))}
+                  {loading && (
+                    <ActivityIndicator style={styles.loader} color="#007AFF" />
+                  )}
+                </>
               )}
-            </>
+            </ScrollView>
           )}
-        </ScrollView>
-      )}
-    </View>
-  </SafeAreaView>
-);
+        </View>
+      </SafeAreaView>
+    </ErrorBoundary>
+  );
+};
 
-// Add these new styles to your existing StyleSheet:
 const styles = StyleSheet.create({
-  // ... keep your existing styles ...
-
+  container: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+  },
+  content: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  loader: {
+    padding: 20,
+  },
   skeletonContainer: {
     padding: 16,
   },

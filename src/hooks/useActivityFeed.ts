@@ -1,7 +1,8 @@
 // src/hooks/useActivityFeed.ts
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../config/supabase';
 import { CacheManager } from '../utils/cacheManager';
+import { MemoryManager } from '../utils/memoryManager';
 
 type FeedType = 'posts' | 'events';
 
@@ -37,18 +38,24 @@ interface EventFeedItem extends BaseFeedItem {
 
 type FeedItem = PostFeedItem | EventFeedItem;
 
+const ITEMS_PER_PAGE = 10;
+
 export const useActivityFeed = (activeFilter: FeedType) => {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const ITEMS_PER_PAGE = 10;
+  const pageRef = useRef(1);
+  const isFetchingRef = useRef(false);
+  const feedCache = useRef<Map<number, FeedItem[]>>(new Map());
 
   const getCacheKey = (pageNum: number) => 
     `feed_${activeFilter}_page${pageNum}_${new Date().toDateString()}`;
 
-  const fetchFeed = async (pageNum: number, isRefreshing = false) => {
+  const fetchFeed = useCallback(async (pageNum: number, isRefreshing = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
       if (isRefreshing) {
         setRefreshing(true);
@@ -56,14 +63,26 @@ export const useActivityFeed = (activeFilter: FeedType) => {
         setLoading(true);
       }
 
-      // Try to get cached data if not refreshing
+      // Check memory cache first
+      if (!isRefreshing && feedCache.current.has(pageNum)) {
+        const cachedData = feedCache.current.get(pageNum);
+        if (cachedData) {
+          setFeed(prev => pageNum === 1 ? cachedData : [...prev, ...cachedData]);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+
+      // Try to get persistent cached data if not refreshing
       if (!isRefreshing) {
         const cachedData = await CacheManager.get<FeedItem[]>({
           key: getCacheKey(pageNum),
-          expiryMinutes: 5, // Cache expires after 5 minutes
+          expiryMinutes: 5,
         });
 
         if (cachedData) {
+          feedCache.current.set(pageNum, cachedData);
           setFeed(prev => pageNum === 1 ? cachedData : [...prev, ...cachedData]);
           setLoading(false);
           setRefreshing(false);
@@ -105,7 +124,8 @@ export const useActivityFeed = (activeFilter: FeedType) => {
           likes: undefined,
         }));
 
-        // Cache the transformed posts
+        // Update both caches
+        feedCache.current.set(pageNum, transformedPosts);
         await CacheManager.set({
           key: getCacheKey(pageNum),
           expiryMinutes: 5,
@@ -129,7 +149,8 @@ export const useActivityFeed = (activeFilter: FeedType) => {
           type: 'events',
         }));
 
-        // Cache the transformed events
+        // Update both caches
+        feedCache.current.set(pageNum, transformedEvents);
         await CacheManager.set({
           key: getCacheKey(pageNum),
           expiryMinutes: 5,
@@ -144,14 +165,29 @@ export const useActivityFeed = (activeFilter: FeedType) => {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      isFetchingRef.current = false;
     }
-  };
+  }, [activeFilter]);
+
+  const handleRefresh = useCallback(async () => {
+    feedCache.current.clear();
+    await CacheManager.clear(getCacheKey(1));
+    pageRef.current = 1;
+    await fetchFeed(1, true);
+  }, [fetchFeed]);
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || loading || refreshing || isFetchingRef.current) return;
+    const nextPage = pageRef.current + 1;
+    pageRef.current = nextPage;
+    await fetchFeed(nextPage);
+  }, [hasMore, loading, refreshing, fetchFeed]);
 
   useEffect(() => {
-    setPage(1);
+    pageRef.current = 1;
+    feedCache.current.clear();
     fetchFeed(1);
 
-    // Set up real-time subscription
     const subscription = supabase
       .channel(`${activeFilter}_feed`)
       .on(
@@ -161,32 +197,26 @@ export const useActivityFeed = (activeFilter: FeedType) => {
           schema: 'public',
           table: activeFilter,
         },
-        async (payload) => {
-          // Clear cache when data changes
+        async () => {
+          feedCache.current.clear();
           await CacheManager.clear(getCacheKey(1));
           fetchFeed(1);
         }
       )
       .subscribe();
 
+    // Register cleanup with memory manager
+    const cleanup = () => {
+      feedCache.current.clear();
+      setFeed([]);
+    };
+    MemoryManager.addCleanupCallback(cleanup);
+
     return () => {
       subscription.unsubscribe();
+      MemoryManager.removeCleanupCallback(cleanup);
     };
   }, [activeFilter]);
-
-  const handleRefresh = async () => {
-    // Clear cache when manually refreshing
-    await CacheManager.clear(getCacheKey(1));
-    setPage(1);
-    await fetchFeed(1, true);
-  };
-
-  const loadMore = async () => {
-    if (!hasMore || loading || refreshing) return;
-    const nextPage = page + 1;
-    setPage(nextPage);
-    await fetchFeed(nextPage);
-  };
 
   return {
     feed,

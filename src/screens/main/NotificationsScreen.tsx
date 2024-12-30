@@ -20,7 +20,7 @@ import { useNetworkError } from '../../hooks/useNetworkError';
 interface NotificationItemProps {
   notification: {
     id: string;
-    type: 'event' | 'like' | 'comment' | 'connection';
+    type: 'event' | 'like' | 'comment' | 'connection' | 'message';
     title: string;
     body: string;
     created_at: string;
@@ -86,6 +86,8 @@ const NotificationItem = ({ notification, onPress, onDelete, index }: Notificati
         return 'chatbubble-outline';
       case 'connection':
         return 'person-add-outline';
+      case 'message':
+        return 'mail-outline';
       default:
         return 'notifications-outline';
     }
@@ -140,7 +142,6 @@ const NotificationItem = ({ notification, onPress, onDelete, index }: Notificati
     </Swipeable>
   );
 };
-
 const NotificationsScreen = ({ navigation }) => {
   const { 
     notifications,
@@ -187,6 +188,16 @@ const NotificationsScreen = ({ navigation }) => {
         navigation.navigate('Connections', {
           screen: 'Profile',
           params: { userId: notification.data.userId }
+        });
+        break;
+      case 'message':
+        navigation.navigate('Messages', {
+          screen: 'MessageDetail',
+          params: { 
+            conversationId: notification.data.conversationId,
+            recipientName: notification.data.senderName,
+            recipientId: notification.data.senderId
+          }
         });
         break;
     }
@@ -245,7 +256,7 @@ const NotificationsScreen = ({ navigation }) => {
           )}
           keyExtractor={item => item.id}
           refreshControl={
-                       <RefreshControl
+            <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
               tintColor="#007AFF"
@@ -275,7 +286,6 @@ const NotificationsScreen = ({ navigation }) => {
     </ErrorBoundary>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,

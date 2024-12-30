@@ -1,12 +1,11 @@
 // src/screens/main/NotificationsScreen.tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
   Animated,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -14,6 +13,9 @@ import { useNotifications } from '../../hooks/useNotifications';
 import { formatDistanceToNow } from 'date-fns';
 import { Swipeable } from 'react-native-gesture-handler';
 import { LoadingPlaceholder, SkeletonPresets } from '../../components/shared/LoadingPlaceholder';
+import { ErrorBoundary } from '../../components/shared/ErrorBoundary';
+import { ErrorView } from '../../components/shared/ErrorView';
+import { useNetworkError } from '../../hooks/useNetworkError';
 
 interface NotificationItemProps {
   notification: {
@@ -27,6 +29,7 @@ interface NotificationItemProps {
   };
   onPress: () => void;
   onDelete: () => void;
+  index: number;
 }
 
 const RightSwipeActions = ({ progress, dragX, onDelete }) => {
@@ -51,7 +54,28 @@ const RightSwipeActions = ({ progress, dragX, onDelete }) => {
   );
 };
 
-const NotificationItem = ({ notification, onPress, onDelete }: NotificationItemProps) => {
+const NotificationItem = ({ notification, onPress, onDelete, index }: NotificationItemProps) => {
+  const slideAnim = new Animated.Value(50);
+  const fadeAnim = new Animated.Value(0);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        delay: index * 50,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 7,
+        delay: index * 50,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
   const getIcon = () => {
     switch (notification.type) {
       case 'event':
@@ -67,6 +91,8 @@ const NotificationItem = ({ notification, onPress, onDelete }: NotificationItemP
     }
   };
 
+  const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+
   return (
     <Swipeable
       renderRightActions={(progress, dragX) => (
@@ -78,10 +104,14 @@ const NotificationItem = ({ notification, onPress, onDelete }: NotificationItemP
       )}
       overshootRight={false}
     >
-      <TouchableOpacity
+      <AnimatedTouchable
         style={[
           styles.notificationItem,
-          !notification.read && styles.unreadNotification
+          !notification.read && styles.unreadNotification,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          },
         ]}
         onPress={onPress}
       >
@@ -106,27 +136,39 @@ const NotificationItem = ({ notification, onPress, onDelete }: NotificationItemP
             {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
           </Text>
         </View>
-      </TouchableOpacity>
+      </AnimatedTouchable>
     </Swipeable>
   );
 };
+
 const NotificationsScreen = ({ navigation }) => {
   const { 
     notifications,
     loading,
     refreshing,
+    error,
     markAsRead,
     deleteNotification,
     refresh
   } = useNotifications();
+  const { isOnline, handleError, clearError } = useNetworkError();
+
+  useEffect(() => {
+    if (error) {
+      handleError(error);
+    }
+  }, [error]);
+
+  const handleRefresh = async () => {
+    clearError();
+    await refresh();
+  };
 
   const handleNotificationPress = async (notification) => {
-    // Mark as read
     if (!notification.read) {
       await markAsRead(notification.id);
     }
 
-    // Navigate based on notification type
     switch (notification.type) {
       case 'event':
         navigation.navigate('Events', {
@@ -150,15 +192,28 @@ const NotificationsScreen = ({ navigation }) => {
     }
   };
 
+  if (!isOnline) {
+    return (
+      <ErrorView
+        error="No internet connection. Please check your network and try again."
+        icon="cloud-offline-outline"
+        onRetry={handleRefresh}
+      />
+    );
+  }
+
   if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
         {[1, 2, 3].map((_, index) => (
-          <View key={index} style={styles.skeletonContainer}>
-            <SkeletonPresets.Avatar />
+          <View key={index} style={styles.skeletonNotification}>
+            <View style={styles.skeletonIcon}>
+              <SkeletonPresets.Avatar style={styles.skeletonIconInner} />
+            </View>
             <View style={styles.skeletonContent}>
-              <SkeletonPresets.Text />
-              <SkeletonPresets.Text />
+              <SkeletonPresets.Text style={styles.skeletonTitle} />
+              <SkeletonPresets.Text style={styles.skeletonBody} />
+              <SkeletonPresets.Text style={styles.skeletonTimestamp} />
             </View>
           </View>
         ))}
@@ -166,34 +221,58 @@ const NotificationsScreen = ({ navigation }) => {
     );
   }
 
-  return (
-    <View style={styles.container}>
-      <Animated.FlatList
-        data={notifications}
-        renderItem={({ item }) => (
-          <NotificationItem
-            notification={item}
-            onPress={() => handleNotificationPress(item)}
-            onDelete={() => deleteNotification(item.id)}
-          />
-        )}
-        keyExtractor={item => item.id}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={refresh}
-            tintColor="#007AFF"
-          />
-        }
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
-            <Icon name="notifications-outline" size={48} color="#666" />
-            <Text style={styles.emptyText}>No notifications yet</Text>
-          </View>
-        )}
+  if (error) {
+    return (
+      <ErrorView
+        error={error}
+        onRetry={handleRefresh}
       />
-    </View>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <View style={styles.container}>
+        <Animated.FlatList
+          data={notifications}
+          renderItem={({ item, index }) => (
+            <NotificationItem
+              notification={item}
+              onPress={() => handleNotificationPress(item)}
+              onDelete={() => deleteNotification(item.id)}
+              index={index}
+            />
+          )}
+          keyExtractor={item => item.id}
+          refreshControl={
+                       <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#007AFF"
+              colors={['#007AFF']}
+            />
+          }
+          contentContainerStyle={[
+            styles.listContainer,
+            notifications.length === 0 && styles.emptyListContainer,
+          ]}
+          ListEmptyComponent={() => (
+            <Animated.View 
+              style={[
+                styles.emptyContainer,
+                { opacity: new Animated.Value(1) }
+              ]}
+            >
+              <Icon name="notifications-outline" size={48} color="#666" />
+              <Text style={styles.emptyText}>No notifications yet</Text>
+              <Text style={styles.emptySubtext}>
+                We'll notify you when there's something new
+              </Text>
+            </Animated.View>
+          )}
+        />
+      </View>
+    </ErrorBoundary>
   );
 };
 
@@ -207,20 +286,46 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F2F7',
     padding: 16,
   },
-  skeletonContainer: {
+  skeletonNotification: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     padding: 16,
     marginBottom: 1,
-    alignItems: 'center',
+    alignItems: 'flex-start',
+  },
+  skeletonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  skeletonIconInner: {
+    width: '100%',
+    height: '100%',
   },
   skeletonContent: {
     flex: 1,
-    marginLeft: 12,
     gap: 8,
+  },
+  skeletonTitle: {
+    height: 18,
+    width: '80%',
+  },
+  skeletonBody: {
+    height: 16,
+    width: '90%',
+  },
+  skeletonTimestamp: {
+    height: 12,
+    width: '40%',
   },
   listContainer: {
     flexGrow: 1,
+  },
+  emptyListContainer: {
+    flex: 1,
+    justifyContent: 'center',
   },
   notificationItem: {
     flexDirection: 'row',
@@ -267,12 +372,20 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingHorizontal: 32,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '600',
     color: '#666',
     marginTop: 12,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#8E8E93',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   deleteButton: {
     backgroundColor: '#FF3B30',

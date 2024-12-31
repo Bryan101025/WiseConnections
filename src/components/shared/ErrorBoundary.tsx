@@ -8,6 +8,7 @@ import {
   ScrollView 
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import * as Sentry from '@sentry/react-native';
 
 interface Props {
   children: React.ReactNode;
@@ -32,11 +33,29 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.props.onError?.(error, errorInfo);
-    // You can also log the error to an error reporting service here
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    
+    // Log to console in development
+    if (__DEV__) {
+      console.error('ErrorBoundary caught an error:', error, errorInfo);
+    }
+
+    // Report to Sentry
+    Sentry.withScope(scope => {
+      scope.setExtra('componentStack', errorInfo.componentStack);
+      scope.setTag('errorBoundary', 'true');
+      scope.setLevel(Sentry.Severity.Error);
+      Sentry.captureException(error);
+    });
   }
 
   handleRetry = () => {
+    // Add breadcrumb for retry attempt
+    Sentry.addBreadcrumb({
+      category: 'ui.action',
+      message: 'User attempted to retry after error',
+      level: Sentry.Severity.Info,
+    });
+    
     this.setState({ hasError: false, error: null });
   };
 
@@ -107,3 +126,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export default ErrorBoundary;
